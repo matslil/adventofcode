@@ -87,25 +87,30 @@ fn unwrap_json(left: &json::JsonValue, right: &json::JsonValue, indent: usize) -
                 return UnwrapResult::Continue;
             }
             match right {
-               json::JsonValue::Number(right_number) => {
-                   let right_entry: Vec<json::JsonValue> = vec![json::JsonValue::Number(right_number.clone())];
-                   return unwrap_json(left, &json::JsonValue::Array(right_entry), indent+1);
-               },
-               json::JsonValue::Array(right_vector) => {
-                   let left_iter = left_vector.iter();
-                   let mut right_iter = right_vector.iter();
-                   for new_left in left_iter {
-                       if let Some(new_right) = right_iter.next() {
-                           match unwrap_json(new_left, new_right, indent+1) {
-                               UnwrapResult::NoMatch => return UnwrapResult::NoMatch,
-                               UnwrapResult::Match => return UnwrapResult::Match,
-                               UnwrapResult::Continue => {},
-                           }
-                       } else {
-                           return UnwrapResult::NoMatch;
-                       }
+                json::JsonValue::Number(right_number) => {
+                    let right_entry: Vec<json::JsonValue> = vec![json::JsonValue::Number(right_number.clone())];
+                    return unwrap_json(left, &json::JsonValue::Array(right_entry), indent+1);
+                },
+                json::JsonValue::Array(right_vector) => {
+                    let mut left_iter = left_vector.into_iter();
+                    let mut right_iter = right_vector.into_iter();
+                    loop {
+                        let new_left = left_iter.next();
+                        let new_right = right_iter.next();
+                        if let Some(right_entry) = new_right {
+                            if let Some(left_entry) = new_left {
+                                match unwrap_json(left_entry, right_entry, indent+1) {
+                                    UnwrapResult::NoMatch => return UnwrapResult::NoMatch,
+                                    UnwrapResult::Match => return UnwrapResult::Match,
+                                    UnwrapResult::Continue => {},
+                                }
+                            } else {
+                                return UnwrapResult::Match;
+                            }
+                        } else {
+                            return UnwrapResult::NoMatch;
+                        }
                    }
-                   return UnwrapResult::Match;
                },
                _ => panic!("left-right: Failed match"),
             }
