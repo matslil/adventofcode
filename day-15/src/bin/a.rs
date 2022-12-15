@@ -1,18 +1,16 @@
 use std::fs::File;
 use std::io::{BufReader, BufRead};
-use std::env;
 use scanf::sscanf;
 use core::ops::Sub;
 
-type PosType = i32;
+type PosType = i64;
 
 type Pos = (PosType, PosType);
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let input = args.get(1).expect("Expected a file name as argument 1");
-    let inspect = args.get(2).expect("Expected y value as argument 2").parse::<u32>().expect("Not a valid integer");
-    println!("{}", get_answer(input, &inspect));
+    const INPUT: &str = "input";
+    const INSPECT: PosType = 2000000;
+    println!("{}", get_answer(INPUT, INSPECT));
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -21,14 +19,39 @@ struct Sensor {
     pub beacon: Pos,
 }
 
-fn get_answer(file: &str, inspect_y: &u32) -> u32 {
+fn get_answer(file: &str, inspect_y: PosType) -> usize {
     let mut sensors = Vec::<Sensor>::new();
     for line in BufReader::new(File::open(file).unwrap()).lines().map(|x| x.unwrap()) {
         sensors.push(parse_line(&line));
     }
-    for sensor in sensors {
+    let mut max_x = 0;
+    let mut min_x = PosType::MAX;
+    for sensor in &sensors {
+        let distance = manhattan(sensor.pos, sensor.beacon);
+        let new_max_x = sensor.pos.0 + distance;
+        let new_min_x = sensor.pos.0 - distance;
+        if new_max_x > max_x {
+            max_x = new_max_x;
+        }
+        if new_min_x < min_x {
+            min_x = new_min_x;
+        }
     }
-    return 26;
+    let mut covered_x = Vec::<PosType>::new();
+    for x in min_x..=max_x {
+        for sensor in &sensors {
+            let beacon_distance = manhattan(sensor.pos, sensor.beacon);
+            let y_distance = manhattan(sensor.pos, (x, inspect_y));
+            if y_distance <= beacon_distance && sensor.beacon != (x,inspect_y) {
+                covered_x.push(x);
+                break;
+            }
+        }
+    }
+
+    println!("{:?}", covered_x);
+
+    covered_x.len()
 }
 
 fn abs_difference<T>(x: T, y: T) -> T
@@ -48,10 +71,10 @@ fn manhattan(pos1: Pos, pos2: Pos) -> PosType
 }
 
 fn parse_line(line: &str) -> Sensor {
-    let mut sensor_x: i32 = 0;
-    let mut sensor_y: i32 = 0;
-    let mut beacon_x: i32 = 0;
-    let mut beacon_y: i32 = 0;
+    let mut sensor_x: PosType = 0;
+    let mut sensor_y: PosType = 0;
+    let mut beacon_x: PosType = 0;
+    let mut beacon_y: PosType = 0;
     if ! sscanf!(line, "Sensor at x={}, y={}: closest beacon is at x={}, y={}",
                 sensor_x, sensor_y, beacon_x, beacon_y).is_ok() {
         panic!("{}: Malformed input", line);
@@ -74,7 +97,7 @@ fn test_manhattan() {
 #[test]
 fn test_input() {
     const INPUT_FILE: &str = "test";
-    const INPUT_Y: u32 = 10;
+    const INPUT_Y: PosType = 10;
 
-    assert_eq!(get_answer(INPUT_FILE, &INPUT_Y), 26);
+    assert_eq!(get_answer(INPUT_FILE, INPUT_Y), 26 as usize);
 }
