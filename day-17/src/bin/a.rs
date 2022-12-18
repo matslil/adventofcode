@@ -155,7 +155,7 @@ fn merge_rock_into_board(board: &mut Board, rock: &Rock, pos: &Pos) {
             }
         }
     }
-    print_board(board);
+    //print_board(board);
 }
 
 fn print_board(board: &Board) {
@@ -177,7 +177,7 @@ fn add_blank_row_to_board(board: &mut Board) {
 }
 
 fn move_down(board: &Board, rock: &Rock, pos: &mut Pos) -> bool {
-    if pos.1 == 0 {
+    if (pos.1 + 1) - rock_matrix(rock).rows == 0 {
         false
     } else {
         let try_pos = (pos.0, pos.1 - 1);
