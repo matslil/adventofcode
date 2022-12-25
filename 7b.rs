@@ -6,6 +6,9 @@ use std::collections::BTreeMap;
 
 type Dirs = BTreeMap<Vec<String>, u64>;
 
+const DISK_TOTAL: u64 = 70000000;
+const DISK_MIN_FREE: u64 = 30000000;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     println!("{}", get_answer(&args[1]));
@@ -49,5 +52,11 @@ fn get_answer(file: &str) -> u64 {
 
     println!("{:?}", dirs);
 
-    dirs.into_iter().fold(0, |acc, entry| if entry.1 <= 100000 { acc + entry.1 } else { acc })
+    let disk_used = dirs.get(&vec!["".to_string()]).unwrap();
+    let min_free = DISK_MIN_FREE - (DISK_TOTAL - disk_used);
+    let mut candidates = dirs.iter().filter(|entry| *entry.1 >= min_free).collect::<Vec<_>>();
+    candidates.sort();
+    candidates.reverse();
+    println!("{:?}", candidates);
+    *candidates[0].1
 }
