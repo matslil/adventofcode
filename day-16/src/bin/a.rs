@@ -2,17 +2,19 @@ use std::fs::File;
 use std::io::{BufReader, BufRead};
 use scanf::sscanf;
 use std::collections::HashMap;
-use slab_tree::{TreeBuilder, NodeId};
-use std::iter;
-use std::fmt::Display;
+use std::cmp::Ordering;
 use std::fmt;
-use std::ops;
-use slab_tree::behaviors::RemoveBehavior::*;
-use std::collections::VecDeque;
 
-type ValveId = [u8; 2];
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+struct ValveId(u8, u8);
 
-const START_VALVE: ValveId = ['A' as u8, 'A' as u8];
+impl fmt::Debug for ValveId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{}", self.0 as char, self.1 as char)
+    }
+}
+
+const START_VALVE: ValveId = ValveId('A' as u8, 'A' as u8);
 
 const END_MINUTE: u32 = 30;
 
@@ -23,47 +25,38 @@ fn main() {
 
 #[derive(Debug, Clone, Default)]
 struct Valve {
-    flow_rate: u64,
+    flow: u64,
     next: Vec<ValveId>,
 }
 
 type Valves = HashMap<ValveId,Valve>;
 
-#[derive(Debug, Clone)]
-struct TreeNode {
-    path: String,
-    minute: u32,
-    current: Vec<u64>,
-    flow: u64,
-}
-
-impl Display for TreeNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{ {}: minute: {}, current: {:?}, flow: {} }}", self.path, self.minute, self.current, self.flow)
-    }
-}
-
-struct ValveArray(pub Vec<TreeNode>);
-
-impl ops::Deref for ValveArray {
-    type Target = Vec<TreeNode>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Display for ValveArray {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.iter().fold(Ok(()), |result, album| {
-            result.and_then(|_| writeln!(f, "{}", album))
-        })
-    }
-}
-
+#[derive(Debug, Eq)]
 struct QueueNode {
-    node_id: NodeId,
+    minute: u32,
     valve_id: ValveId,
+    current: u64,
+    flow: u64,
+    valves_opened: Vec<ValveId>,
+    path: String,
+}
+
+impl PartialEq for QueueNode {
+    fn eq(&self, rhs: &Self) -> bool {
+        self.valve_id == rhs.valve_id && self.minute == rhs.minute && self.current == rhs.current && self.flow == rhs.flow && self.valves_opened == rhs.valves_opened
+    }
+}
+
+impl PartialOrd for QueueNode {
+    fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+        Some(self.cmp(rhs))
+    }
+}
+
+impl Ord for QueueNode {
+    fn cmp(&self, rhs: &Self) -> Ordering {
+        self.minute.cmp(&rhs.minute)
+    }
 }
 
 fn get_answer(file: &str) -> u64 {
@@ -73,134 +66,151 @@ fn get_answer(file: &str) -> u64 {
         valves.insert(valve_str, valve);
     }
 
-    let mut tree = TreeBuilder::new().with_root(TreeNode {
-        path: START_VALVE.into_iter().map(|c| c as char).collect::<String>(),
-        minute: 0,
-        current: vec![0],
-        flow: 0
-    }).build();
-    let mut todo = VecDeque::new();
-    let root_idx = tree.root_id().unwrap();
-    todo.push_front(QueueNode {
-        node_id: root_idx,
+    let mut todo = Vec::new();
+    todo.push(QueueNode {
         valve_id: START_VALVE,
+        minute: 1,
+        current: 0,
+        flow: 0,
+        valves_opened: Vec::new(),
+        path: valve_id_str(START_VALVE),
     });
 
     println!("{:?}", valves);
 
     let mut count = 0;
 
-    while let Some(todo_entry) = todo.pop_back() {
-        let tree_node_wrapped = tree.get_mut(todo_entry.node_id);
-
-        if tree_node_wrapped.is_none() {
-            // Removed
-            continue;
+    while let Some(todo_entry) = todo.pop() {
+        if todo_entry.minute == END_MINUTE {
+            break;
         }
+        println!("\nPopped: {:?}", todo_entry);
+        for valve_id in valves.get(&todo_entry.valve_id).unwrap().next.clone() {
+            let mut current = todo_entry.current + todo_entry.flow;
+            let mut flow = todo_entry.flow;
+            let mut minute = todo_entry.minute + 1;
 
-        let mut tree_node = tree_node_wrapped.unwrap();
-//        println!("{}Popped: {}: {:?}", iter::repeat(' ').take(tree_node.data().minute as usize).collect::<String>(), valve_id_str(&todo_entry.valve_id), tree_node.data());
-        for open_valve in [true, false] {
-            for valve_id in &valves.get(&todo_entry.valve_id).unwrap().next {
-                let (current, flow) = if open_valve {
-                    (vec![tree_node.data().flow + tree_node.data().current.last().unwrap(), 2 * tree_node.data().flow + tree_node.data().current.last().unwrap()],
-                     tree_node.data().flow + valves.get(&todo_entry.valve_id).unwrap().flow_rate)
-                } else {
-                    (vec![tree_node.data().flow + tree_node.data().current.last().unwrap()],
-                     tree_node.data().flow)
-                };
-                let minute = if open_valve { tree_node.data().minute + 2 } else { tree_node.data().minute + 1 };
-                let mut path: String;
-                if let Some(mut parent) = tree_node.parent() {
-                    path = (*valve_id).into_iter().map(|c| c as char).collect::<String>();
-                    path.push_str(":");
-                    path.push_str(&parent.data().path.clone());
-                } else {
-                    path = (*valve_id).into_iter().map(|c| c as char).collect::<String>();
-                }
-
-                if open_valve {
-                    if minute > (END_MINUTE + 1) {
-                        continue;
-                    }
-                } else {
-                    if minute > END_MINUTE {
-                        continue;
-                    }
-                }
-                let node_flow = tree_node.data().flow;
-                if let Some(node) = tree_node.as_ref().parent() {
-                    if node.data().flow == node_flow {
-                        if let Some(node) = node.parent() {
-                            if node.data().flow == node_flow {
-//                                println!("Cutting branch");
-                                continue;
-                            }
-                        }
-                    }
-                }
-                let new_tree_node = TreeNode {
-                    path,
-                    minute,
-                    current,
-                    flow
-                };
-//                println!("{}Pushed: {}: {:?}", iter::repeat(' ').take(tree_node.data().minute as usize).collect::<String>(), valve_id_str(&valve_id),  new_tree_node);
-                let node_id = tree_node.append(new_tree_node).node_id();
-                todo.push_front(QueueNode { node_id, valve_id: *valve_id });
+            if minute > END_MINUTE {
+                continue;
             }
+
+            let new_entry = QueueNode {
+                valve_id,
+                minute,
+                current,
+                flow,
+                valves_opened: todo_entry.valves_opened.clone(),
+                path: format!("{}:{:?}", todo_entry.path, valve_id),
+            };
+
+            println!("Pushed: {:?}", new_entry);
+
+            todo.push(new_entry);
+
+            let entry_flow = valves.get(&todo_entry.valve_id).unwrap().flow;
+//            println!("{:?}: Flow = {}", todo_entry.valve_id, entry_flow);
+
+            current += flow;
+            flow += entry_flow;
+            minute += 1;
+
+            if entry_flow == 0 || todo_entry.valves_opened.contains(&todo_entry.valve_id) || minute > END_MINUTE {
+                continue;
+            }
+
+            let mut valves_opened = todo_entry.valves_opened.clone();
+            valves_opened.sort();
+            valves_opened.push(todo_entry.valve_id);
+
+            let new_entry = QueueNode {
+                valve_id,
+                minute,
+                current,
+                flow,
+                valves_opened,
+                path: format!("{}:{:?}", todo_entry.path, valve_id),
+            };
+
+//            println!("Opening valve on {:?}", valve_id_str(todo_entry.valve_id));
+
+            println!("Pushed: {:?}", new_entry);
+
+            todo.push(new_entry);
         }
+
+        let size_before = todo.len();
+        todo.sort();
+        todo.reverse();
+        todo.dedup();
+        println!("Removed {} duplicates", size_before - todo.len());
+
         count += 1;
         if count % 100 == 0 {
             let mut items_removed = 0;
-            while remove_non_performing_node(&mut tree) { items_removed += 1 };
+            while remove_non_performing_node(&mut todo) { items_removed += 1 };
             println!("Count: {}, Queue size: {}, Removed: {}", count, todo.len(), items_removed);
+            let lens = todo.iter().map(|e| e.valves_opened.len()).collect::<Vec<_>>();
+            if lens.into_iter().fold(true, |acc, e| if acc && e == valves.len() { true } else { false }) {
+                break;
+            }
         }
     }
 
-    let all_nodes = tree.root().unwrap().traverse_level_order().collect::<Vec<_>>();
-    let all_data = ValveArray(all_nodes.iter().map(|n| n.data().clone()).collect::<Vec<TreeNode>>());
-    println!("{:#}", all_data);
-    let data = all_nodes.into_iter().filter(|n| n.data().minute == END_MINUTE + n.data().current.len() as u32 - 1).map(|n| n.data().current.clone()).flatten().collect::<Vec<_>>();
-    println!("{:?}", data);
-    data.into_iter().max().unwrap()
+    for (idx, node) in todo.iter().enumerate() {
+        if node.minute != END_MINUTE {
+            println!("{}: {:?}", idx, node);
+        }
+    }
+
+    let mut currents = Vec::new();
+
+    for entry in todo {
+        if entry.minute < END_MINUTE {
+            // Assume we break before finished because all valves are opened
+            let minutes_left = END_MINUTE - entry.minute;
+            let current = entry.current + entry.flow * minutes_left as u64;
+            currents.push(current);
+        } else {
+            currents.push(entry.current);
+        }
+    }
+
+    currents.into_iter().max().unwrap()
 }
 
-fn remove_non_performing_node(tree: &mut slab_tree::Tree<TreeNode>) -> bool {
-    let mut selected: Option<NodeId> = Option::None;
+fn remove_non_performing_node(queue: &mut Vec<QueueNode>) -> bool {
+    let mut selected: Option<usize> = Option::None;
     let mut max_current = 0_u64;
     let mut min_current = u64::MAX;
 
-    if let Some(root) = tree.root() {
-        let max_minute = root.traverse_level_order().map(|n| n.data().minute).max().unwrap();
-        let filtered_current = root.traverse_level_order().filter(|n| n.data().minute == max_minute);
-
-        for tree_node in filtered_current {
-            let node = tree_node.data();
-            let max = *node.current.iter().max().unwrap();
-            let min = *node.current.iter().min().unwrap();
-            if max > max_current {
-                max_current = max;
-            }
-            if min < min_current {
-                min_current = min;
-                selected = Some(tree_node.node_id());
-            }
+    for (idx, node) in queue.iter().enumerate() {
+        if node.current > max_current {
+            max_current = node.current;
+        }
+        if node.current < min_current {
+            min_current = node.current;
+            selected = Some(idx);
         }
 
-//        println!("{} {}", max_current, min_current);
-
-        if selected.is_some() && max_current > 100 && (max_current * 5) > (min_current * 6) {
-  //          println!("Removing one");
-            tree.remove(selected.unwrap(), DropChildren);
-            return true;
+        if selected.is_some() {
+            if max_current > 1000 {
+                if (max_current * 4) > (min_current * 5) {
+                    queue.remove(selected.unwrap());
+                    return true;
+                }
+            } else if max_current > 100 {
+                if (max_current * 3) > (min_current * 4) {
+                    queue.remove(selected.unwrap());
+                    return true;
+                }
+            }
         }
     }
     false
 }
 
-fn valve_id_str(valve_id : &ValveId) -> String {
-    format!("{}{}", valve_id[0] as char, valve_id[1] as char)
+fn valve_id_str(valve_id : ValveId) -> String {
+    format!("{}{}", valve_id.0 as char, valve_id.1 as char)
 }
 
 // Valve VR has flow rate=11; tunnels lead to valves LH, KV, BP
@@ -208,13 +218,13 @@ fn parse_line(line: &str) -> (ValveId, Valve) {
     println!("{}", line);
     let parts: Vec<&str> = line.split("; ").collect();
     let mut valve_idx = String::new();
-    let mut flow_rate: u64 = 0;
+    let mut flow: u64 = 0;
 
     println!("{:?}", parts);
-    sscanf!(parts[0], "Valve {} has flow rate={}", valve_idx, flow_rate).expect(parts[0]);
+    sscanf!(parts[0], "Valve {} has flow rate={}", valve_idx, flow).expect(parts[0]);
 
     let valve_idx_chars = valve_idx.chars().collect::<Vec<_>>();
-    let mut valve = Valve { flow_rate: flow_rate, next: Default::default() };
+    let mut valve = Valve { flow, next: Default::default() };
     let words: Vec<&str> = parts[1].split(" ").collect();
     for next in words {
         let chars: Vec<char> = next.chars().collect();
@@ -222,9 +232,9 @@ fn parse_line(line: &str) -> (ValveId, Valve) {
         if chars[0] < 'A' || chars[0] > 'Z' {
             continue;
         }
-        valve.next.push([chars[0] as u8, chars[1] as u8]);
+        valve.next.push(ValveId(chars[0] as u8, chars[1] as u8));
     }
-    ([valve_idx_chars[0] as u8, valve_idx_chars[1] as u8], valve)
+    (ValveId(valve_idx_chars[0] as u8, valve_idx_chars[1] as u8), valve)
 }
 
 #[cfg(test)]
@@ -232,5 +242,6 @@ fn parse_line(line: &str) -> (ValveId, Valve) {
 fn test_input() {
     const INPUT_FILE: &str = "test";
 
+    // AA:DD:CC:BB:AA:II:JJ:II:AA:DD:EE:FF:GG:HH:GG:FF:EE:DD:CC:
     assert_eq!(get_answer(INPUT_FILE), 1651 as u64);
 }

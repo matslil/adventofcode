@@ -8,7 +8,7 @@ type Pos = (PosType, PosType);
 
 fn main() {
     const INPUT: &str = "input";
-    const INSPECT: PosType = 2000000;
+    const INSPECT: PosType = 4000000;
     println!("{}", get_answer(INPUT, INSPECT));
 }
 
