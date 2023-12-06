@@ -1,4 +1,4 @@
-use tracing::{self, info};
+use tracing::{self, info, instrument};
 use tracing_subscriber::{filter, prelude::*};
 use std::io::{BufRead, BufReader};
 use std::fs::File;
@@ -7,7 +7,7 @@ use std::fmt;
 use std::cmp;
 use itertools::Itertools;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Range {
     dst_start: usize,
     src_start: usize,
@@ -16,33 +16,49 @@ struct Range {
 
 impl fmt::Display for Range {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {} {}", self.dst_start, self.src_start, self.len)
+        write!(f, "{}..{} -> {}..{}",
+            self.src_start, self.src_start + self.len,
+            self.dst_start, self.dst_start + self.len
+            )
     }
 }
 
 impl Range {
     fn new(line: &str) -> Self {
+        info!("Range::new({})", line);
         let parts: Vec<usize> = line.split_whitespace().map(|e| e.parse::<usize>().unwrap()).collect();
-        Self {
+        let result = Self {
             dst_start: parts[0],
             src_start: parts[1],
             len: parts[2]
-        }
+        };
+        info!("{}", result);
+        result
     }
 
     fn overlaps_with(&self, other: &Range) -> bool {
-        ! ((self.dst_start > (other.dst_start + other.len)) ||
-            ((self.dst_start + self.len) < other.dst_start))
+        let result = ! ((self.dst_start > (other.dst_start + other.len)) ||
+            ((self.dst_start + self.len) < other.dst_start));
+        info!("{} overlaps_with({}) -> {}", self, other, result);
+        result
     }
 
     fn merge_with(&self, other: &Range) -> Self {
         let dst_start = cmp::min(self.dst_start, other.dst_start);
         let src_start = cmp::min(self.src_start, other.src_start);
         let dst_end = cmp::max(self.dst_start + self.len, other.dst_start + other.len);
+        let len = dst_end - dst_start;
+
+        info!("{} => {}..{} -> {}..{}",
+            other,
+            src_start, src_start + len,
+            dst_start, dst_start + len
+        );
+
         Self {
             dst_start: dst_start,
             src_start: src_start,
-            len: dst_end - dst_start,
+            len: len,
         }
     }
 }
@@ -76,7 +92,7 @@ impl fmt::Display for Ranges {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Name: {}\n", self.name)?;
         for range in &self.ranges {
-            range.fmt(f);
+            range.fmt(f)?;
             write!(f, "\n")?;
         }
         Ok(())
@@ -86,7 +102,8 @@ impl fmt::Display for Ranges {
 impl Ranges {
     fn new(lines: &mut impl Iterator<Item = String>) -> Self {
         let mut ranges: Vec<Range> = Vec::new();
-        let name = lines.next().unwrap();
+        let name_line = lines.next().unwrap();
+        let name = name_line.split(":").next().unwrap();
         for line in lines.map(|e| e.trim().to_string()) {
             if line.len() == 0 {
                 break;
@@ -109,11 +126,11 @@ impl Ranges {
 
     // Search through list of ranges, returns index of first two
     // ranges found to overlap
-    fn first_overlap(&self) -> Option<(&Range, &Range)> {
+    fn first_overlap(&self) -> Option<(Range, Range)> {
         for pair in self.ranges.iter().combinations(2) {
-            let range1: &Range = pair[0];
-            let range2: &Range = pair[1];
-            if range1.overlaps_with(range2) {
+            let range1: Range = pair[0].clone();
+            let range2: Range = pair[1].clone();
+            if range1.overlaps_with(&range2) {
                 return Some((range1, range2));
             }
         }
@@ -124,7 +141,7 @@ impl Ranges {
         loop {
             match self.first_overlap() {
                 Some((range1, range2)) => {
-                    let new_range = range1.merge_with(range2);
+                    let new_range = range1.merge_with(&range2);
                     self.remove(&range1.clone());
                     self.remove(&range2.clone());
                     self.ranges.push(new_range);
@@ -179,6 +196,7 @@ fn get_answer(file: &str) -> usize {
 
     let seeds = parse_seeds(&mut iter);
     info!("{:?}", seeds);
+    let _ = iter.next();
 
     loop {
         let ranges = Ranges::new(&mut iter);
