@@ -1,17 +1,16 @@
-use tracing::{self, info, instrument};
+use tracing::{self, info};
 use tracing_subscriber::{filter, prelude::*};
 use std::io::{BufRead, BufReader};
 use std::fs::File;
 use std::sync::Arc;
 use std::fmt;
 use std::cmp;
-use itertools::Itertools;
 
 #[derive(Clone, Debug)]
 struct Range {
-    dst_start: usize,
-    src_start: usize,
-    len: usize,
+    dst_start: isize,
+    src_start: isize,
+    len: isize,
 }
 
 impl fmt::Display for Range {
@@ -26,7 +25,7 @@ impl fmt::Display for Range {
 impl Range {
     fn new(line: &str) -> Self {
         info!("Range::new({})", line);
-        let parts: Vec<usize> = line.split_whitespace().map(|e| e.parse::<usize>().unwrap()).collect();
+        let parts: Vec<isize> = line.split_whitespace().map(|e| e.parse::<isize>().unwrap()).collect();
         let result = Self {
             dst_start: parts[0],
             src_start: parts[1],
@@ -36,29 +35,11 @@ impl Range {
         result
     }
 
-    fn overlaps_with(&self, other: &Range) -> bool {
-        let result = ! ((self.dst_start > (other.dst_start + other.len)) ||
-            ((self.dst_start + self.len) < other.dst_start));
-        info!("{} overlaps_with({}) -> {}", self, other, result);
-        result
-    }
-
-    fn merge_with(&self, other: &Range) -> Self {
-        let dst_start = cmp::min(self.dst_start, other.dst_start);
-        let src_start = cmp::min(self.src_start, other.src_start);
-        let dst_end = cmp::max(self.dst_start + self.len, other.dst_start + other.len);
-        let len = dst_end - dst_start;
-
-        info!("{} => {}..{} -> {}..{}",
-            other,
-            src_start, src_start + len,
-            dst_start, dst_start + len
-        );
-
-        Self {
-            dst_start: dst_start,
-            src_start: src_start,
-            len: len,
+    fn contains(&self, value: isize) -> bool {
+        if value >= self.src_start && value < (self.src_start + self.len) {
+            true
+        } else {
+            false
         }
     }
 }
@@ -100,9 +81,9 @@ impl fmt::Display for Ranges {
 }
 
 impl Ranges {
-    fn new(lines: &mut impl Iterator<Item = String>) -> Self {
+    fn new(lines: &mut impl Iterator<Item = String>) -> Option<Self> {
         let mut ranges: Vec<Range> = Vec::new();
-        let name_line = lines.next().unwrap();
+        let name_line = lines.next()?;
         let name = name_line.split(":").next().unwrap();
         for line in lines.map(|e| e.trim().to_string()) {
             if line.len() == 0 {
@@ -114,52 +95,24 @@ impl Ranges {
             name: name.to_string(),
             ranges: ranges,
         };
-        result.merge_overlaps();
         result.ranges.sort();
-        result
+        Some(result)
     }
 
-    fn remove(&mut self, range: &Range) {
-        let search_for = range.clone();
-        self.ranges.remove(self.ranges.iter().position(|e| *e == search_for).unwrap());
-    }
-
-    // Search through list of ranges, returns index of first two
-    // ranges found to overlap
-    fn first_overlap(&self) -> Option<(Range, Range)> {
-        for pair in self.ranges.iter().combinations(2) {
-            let range1: Range = pair[0].clone();
-            let range2: Range = pair[1].clone();
-            if range1.overlaps_with(&range2) {
-                return Some((range1, range2));
+    fn translate(&self, input: isize) -> isize {
+        for range in &self.ranges {
+            if range.contains(input) {
+                return input + (range.dst_start - range.src_start)
             }
         }
-        None
-    }
-
-    fn merge_overlaps(&mut self) {
-        loop {
-            match self.first_overlap() {
-                Some((range1, range2)) => {
-                    let new_range = range1.merge_with(&range2);
-                    self.remove(&range1.clone());
-                    self.remove(&range2.clone());
-                    self.ranges.push(new_range);
-                }
-                None => return,
-            }
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.ranges.len()
+        input
     }
 }
 
-fn parse_seeds(lines: &mut impl Iterator<Item=String>) -> Vec<usize> {
+fn parse_seeds(lines: &mut impl Iterator<Item=String>) -> Vec<isize> {
     let first_line = lines.next().unwrap();
     let parts: Vec<&str> = first_line.split(":").map(|e| e.trim()).collect();
-    let seeds: Vec<usize> = parts[1].split_whitespace().map(|e| e.parse::<usize>().unwrap()).collect();
+    let seeds: Vec<isize> = parts[1].split_whitespace().map(|e| e.parse::<isize>().unwrap()).collect();
     seeds
 }
 
@@ -171,7 +124,8 @@ fn setup_tracing() {
     let file = File::create("debug.log");
     let file = match file  {Ok(file) => file,Err(error) => panic!("Error: {:?}",error),};
     let debug_log = tracing_subscriber::fmt::layer()
-        .with_writer(Arc::new(file));
+        .with_writer(Arc::new(file))
+        .with_ansi(false);
 
     tracing_subscriber::registry()
         .with(
@@ -190,26 +144,51 @@ fn main() {
     println!("{:?}", get_answer("input"));
 }
 
-fn get_answer(file: &str) -> usize {
-    let mut _sum: usize = 0;
+fn get_answer(file: &str) -> isize {
+    let mut _sum: isize = 0;
     let mut iter = BufReader::new(File::open(file).unwrap()).lines().map(|e| e.unwrap());
 
     let seeds = parse_seeds(&mut iter);
     info!("{:?}", seeds);
     let _ = iter.next();
 
+    let mut map: Vec<Ranges> = Vec::new();
+
     loop {
         let ranges = Ranges::new(&mut iter);
-        info!("{}", ranges);
-        if ranges.len() == 0 {
+        if ranges.is_none() {
             break;
         }
+        let ranges = ranges.unwrap();
+//        info!("{}", ranges);
+        map.push(ranges);
     }
-    0
+
+    let mut results: Vec<(isize, isize)> = Vec::new();
+
+    for seed in seeds {
+        let mut result = seed;
+        for ranges in &map {
+            let new_result = ranges.translate(result);
+//            info!("{} translates {} -> {}", ranges, result, new_result);
+            result = new_result;
+        }
+        let end_result = result;
+        info!("Seed {} -> Location {}", seed, end_result);
+        results.push((seed, end_result));
+    }
+
+    let mut min_result: isize = isize::MAX;
+    for result in results {
+        if result.1 < min_result {
+            min_result = result.1;
+        }
+    }
+    min_result
 }
 
 #[test]
 fn test() {
     setup_tracing();
-    assert_eq!(13, get_answer("test"));
+    assert_eq!(35, get_answer("test"));
 }
