@@ -1,5 +1,6 @@
 //248553310 too low
 //251106438 too low
+//251417088 too high
 
 use tracing::{self, info};
 use tracing_subscriber::{filter, prelude::*};
@@ -120,32 +121,43 @@ impl Hand {
             if prev_card == card {
                 nr_duplicates += 1;
             } else if nr_duplicates > 0 {
-                duplicates.push((prev_card.clone(), nr_duplicates));
+                duplicates.push((prev_card.clone(), nr_duplicates + 1));
                 nr_duplicates = 0;
             }
             prev_card = card;
         }
         if nr_duplicates > 0 {
-            duplicates.push((prev_card.clone(), nr_duplicates));
+            duplicates.push((prev_card.clone(), nr_duplicates + 1));
         }
         if prev_card.clone() == Card::CardJ {
             nr_jokers += 1;
         }
 
-        // Sorts by number of duplicates in descending order
+        duplicates.retain(|e| e.0 != Card::CardJ);
+        if duplicates.len() == 0 && nr_jokers > 0 {
+            if nr_jokers < 5 {
+                duplicates.push((Card::CardJ, nr_jokers + 1));
+            } else {
+                duplicates.push((Card::CardJ, nr_jokers));
+            }
+        } else if duplicates.len() > 0 {
+                duplicates[0].1 += nr_jokers;
+        }
         duplicates.sort_by(|a, b| b.1.cmp(&a.1));
 
-        let mut hand_type = if duplicates.len() == 1 && duplicates[0].1 == 4 {
+        // Sorts by number of duplicates in descending order
+
+        let hand_type = if duplicates.len() == 1 && duplicates[0].1 == 5 {
             HandType::FiveOfAKind
-        } else if duplicates.len() == 1 && duplicates[0].1 == 3 {
+        } else if duplicates.len() == 1 && duplicates[0].1 == 4 {
             HandType::FourOfAKind
         } else if duplicates.len() == 2 && duplicates[0].1 != duplicates[1].1 {
             HandType::FullHouse
-        } else if duplicates.len() == 1 && duplicates[0].1 == 2 {
+        } else if duplicates.len() == 1 && duplicates[0].1 == 3 {
             HandType::ThreeOfAKind
-        } else if duplicates.len() == 2 && duplicates[0].1 == 1 && duplicates[1].1 == 1 {
+        } else if duplicates.len() == 2 && duplicates[0].1 == 2 && duplicates[1].1 == 2 {
             HandType::TwoPairs
-        } else if duplicates.len() == 1 && duplicates[0].1 == 1 {
+        } else if duplicates.len() == 1 && duplicates[0].1 == 2 {
             HandType::OnePair
         } else if duplicates.len() == 0 {
             HandType::HighCard
@@ -153,46 +165,7 @@ impl Hand {
             panic!("{:?}: Unknown hand type", duplicates);
         };
 
-        duplicates.retain(|e| e.0 != Card::CardJ);
-
-        info!("Duplicates: {:?}, nr jokers: {}", duplicates, nr_jokers);
-
-        // See if joker can improve this
-        let alternative_hand_type = if nr_jokers == 4 {
-            HandType::FiveOfAKind
-        } else if (nr_jokers == 3) && (duplicates.len() > 0) && (duplicates[0].1 > 0) {
-            HandType::FiveOfAKind
-        } else if (nr_jokers == 2) && (duplicates.len() > 0) && (duplicates[0].1 > 1) {
-            HandType::FiveOfAKind
-        } else if (nr_jokers == 1) && (duplicates.len() > 0) && (duplicates[0].1 > 2) {
-            HandType::FiveOfAKind
-        } else if nr_jokers == 3 {
-            HandType::FourOfAKind
-        } else if nr_jokers == 2 && duplicates.len() > 0 && duplicates[0].1 > 0 {
-            HandType::FourOfAKind
-        } else if nr_jokers == 1 && duplicates.len() > 0 && duplicates[0].1 > 1 {
-            HandType::FourOfAKind
-        } else if nr_jokers == 3 && duplicates.len() > 0 {
-            HandType::FullHouse
-        } else if nr_jokers == 2 && duplicates.len() > 0 && duplicates[0].1 > 1 {
-            HandType::FullHouse
-        } else if nr_jokers == 2 {
-            HandType::ThreeOfAKind
-        } else if nr_jokers == 1 && duplicates.len() > 0 {
-            HandType::ThreeOfAKind
-        } else if nr_jokers > 0 && duplicates.len() > 0 {
-            HandType::TwoPairs
-        } else if nr_jokers == 1 {
-            HandType::OnePair
-        } else {
-            HandType::HighCard
-        };
-
-        if alternative_hand_type > hand_type {
-            hand_type = alternative_hand_type.clone();
-        }
-
-        info!("{:?} {:?} => {} ({})", cards, duplicates, hand_type, alternative_hand_type);
+        info!("{:?} {:?} => {}", cards, duplicates, hand_type);
 
         Self { cards: unsorted_cards, hand_type: hand_type }
     }
@@ -314,4 +287,5 @@ fn test() {
     setup_tracing();
     assert_eq!(5905, get_answer("test"));
     assert_eq!(1369, get_answer("test.extra"));
+    assert_eq!(6839, get_answer("test.extra2"));
 }
