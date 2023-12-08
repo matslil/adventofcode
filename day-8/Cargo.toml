@@ -1,5 +1,5 @@
 [package]
-name = "day-7"
+name = "day-8"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,3 +10,4 @@ tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = "0.3"
 itertools = "0.12"
 text_io = "0.1"
+num = "0.4"
