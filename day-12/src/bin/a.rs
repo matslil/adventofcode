@@ -43,62 +43,62 @@ fn pattern_string(pattern: &Vec<bool>) -> String {
     string
 }
 
-fn translate_pattern(pattern: Vec<bool>, values: VecDeque<usize>) -> (usize, Vec<bool>, VecDeque<usize>) {
+fn translate_pattern(level: usize, pattern: Vec<bool>, in_values: VecDeque<usize>) -> usize {
     let mut count = 0usize;
+    let mut values = in_values.clone();
 
-    info!("translate_pattern({}, {:?}", pattern_string(&pattern), values);
+    info!("{0:1$}translate_pattern({2}, {3:?}", "", level*4, pattern_string(&pattern), values);
 
     if values.len() == 0 {
-        info!("translate_pattern() -> 0");
-        return (0, pattern, VecDeque::new());
+        info!("{0:1$}translate_pattern() -> 0", "", level*4);
+        return 0;
     }
 
     let value = values.pop_front().unwrap();
 
-    if value < pattern.len() {
-        if pattern.into_iter().fold(true, |acc, e| acc && e) {
-            // Cannot do this, since there are non-jokers left
-            //
-            info!("translate_pattern() -> 0");
-            return (0, pattern, values);
-        }
+    if value > pattern.len() {
+        info!("{0:1$}translate_pattern() -> 0", "", level*4);
+        return 0;
     }
 
-    if value == pattern.len() {
-        if pattern.into_iter().fold(true, |acc, e| acc && e) {
-            // Cannot do this, since there are non-jokers left
-            return (0, pattern, values);
-        }
-        info!("translate_pattern() -> 1");
-        return (1, Vec::new(), values);
-    }
-
-    for (nr, trial) in pattern.windows(value).enumerate() {
-        let pattern_iter = pattern[(nr+value)..].to_vec().into_iter();
-        let (pattern_count, remaining_pattern, remaining_values) = match pattern_iter.next() {
-            None => continue,
+    let mut nr = 0usize;
+    for trial in pattern.windows(value) {
+        let mut pattern_iter = trial.iter();
+        match pattern_iter.next() {
+            None => {
+                nr += 1;
+                continue
+            }
             Some(c) => if !c {
+                nr += 1;
                 continue
             } else {
-                translate_pattern(pattern_iter.collect(), values)
+                if pattern.len() > (nr + value) {
+                    return translate_pattern(
+                        level + 1,
+                        pattern[(nr + value + 1)..].to_vec(),
+                        values.clone()
+                    )
+                }
             },
         };
-        if ! pattern.into_iter().fold(true, |acc, e| acc && e) && values.len() == 0 {
-            count += pattern_count;
-        }
+        nr += 1;
     }
 
-    info!("translate_pattern() -> {}", count);
-    (count, pattern, values)
+    if pattern[..value].into_iter().fold(false, |acc, &e| acc || e) && values.len() == 0 {
+        info!("{0:1$}translate_pattern() -> {2}", "", level*4, count);
+        return count;
+    }
+    info!("{0:1$}translate_pattern() -> 0", "", level*4);
+    0
 }
 
 fn translate(patterns: Vec<Vec<bool>>, values: VecDeque<usize>) -> usize {
     let mut count = 0usize;
     for pattern in patterns {
-        let (pattern_count, remaining_pattern, remaining_values) = translate_pattern(pattern, values);
-        if ! pattern.into_iter().fold(true, |acc, e| acc && e) && values.len() == 0 {
-            count += pattern_count;
-        }
+        let pattern_count = translate_pattern(0, pattern.clone(), values.clone());
+        count += pattern_count;
+        info!("translate: +{} ({})", pattern_count, count);
     }
     count
 }
@@ -109,25 +109,24 @@ fn get_answer(file: &str) -> usize {
     for line in BufReader::new(File::open(file).unwrap())
         .lines()
         .map(|e| e.unwrap()) {
-            count += line
+            let parts:Vec<&str> = line.as_str()
                 .split_whitespace()
-                .map(|pair| (pair[0], pair[1]
-                        .into_iter()
-                        .split(",")
-                        .map(|v| v
-                            .parse::<usize>()
-                            .collect::<Vec<usize>>())))
-                .fold(0, |acc, e| acc + translate(
-                        e.0
-                        .into_iter()
-                        .split(".")
-                        .filter(|s| s != "")
-                        .map(|s| s
-                            .chars()
-                            .map(|c| c == '?')
-                            .collect::<Vec<bool>>())
-                        .collect::<Vec<Vec<bool>>>(),
-                        e.1.into()));
+                .collect();
+            let patterns: Vec<Vec<bool>> = parts[0]
+                .split('.')
+                .filter(|&s| s != "")
+                .map(|s| s
+                    .chars()
+                    .map(|c| c == '?')
+                    .collect::<Vec<bool>>())
+                .collect::<Vec<Vec<bool>>>();
+            let values: VecDeque<usize> = parts[1]
+                .split(",")
+                .map(|v| v
+                    .parse::<usize>()
+                    .unwrap())
+                .collect::<Vec<usize>>().into();
+            count += translate(patterns, values);
         }
     count
 }
