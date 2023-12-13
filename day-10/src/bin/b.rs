@@ -1,7 +1,9 @@
 // 215 too low
-// 13979 too high
 // 1151 too high
-// 484
+// 13979 too high
+// 484 nope
+// 487 nope
+
 use tracing::{self, info};
 use tracing_subscriber::{filter, prelude::*};
 use std::io::{BufRead, BufReader};
@@ -9,7 +11,7 @@ use std::fs::File;
 use std::sync::Arc;
 use pathfinding::prelude::Grid;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum Direction {
     North,
     East,
@@ -25,6 +27,58 @@ impl Direction {
             (0, 1) => Direction::South,
             (-1, 0) => Direction::West,
             _ => panic!("{:?} -> {:?}: Cannot translate to direction", from, to),
+        }
+    }
+
+    fn goto(&self, from: &(usize, usize), max_x: usize, max_y: usize) -> Option<(usize, usize)> {
+        match self {
+            Direction::North => if from.1 > 0 {
+                Some((from.0, from.1 - 1))
+            } else {
+                None
+            }
+            Direction::East => if from.0 < max_x {
+                Some((from.0 + 1, from.1))
+            } else {
+                None
+            }
+            Direction::South => if from.1 < max_y {
+                Some((from.0, from.1 + 1))
+            } else {
+                None
+            }
+            Direction::West => if from.0 > 0 {
+                Some((from.0 - 1, from.1))
+            } else {
+                None
+            }
+        }
+    }
+
+    fn opposite(&self) -> Direction {
+        match self {
+            Direction::North => Direction::South,
+            Direction::East => Direction::West,
+            Direction::South => Direction::North,
+            Direction::West => Direction::East,
+        }
+    }
+
+    fn right(&self) -> Direction {
+        match self {
+            Direction::North => Direction::East,
+            Direction::East => Direction::South,
+            Direction::South => Direction::West,
+            Direction::West => Direction::North,
+        }
+    }
+
+    fn left(&self) -> Direction {
+        match self {
+            Direction::North => Direction::West,
+            Direction::East => Direction::North,
+            Direction::South => Direction::East,
+            Direction::West => Direction::South,
         }
     }
 }
@@ -88,7 +142,7 @@ impl std::fmt::Display for Dir {
             Dir::NorthWest  => write!(f, "{}", '╯'),
             Dir::SouthWest  => write!(f, "{}", '╮'),
             Dir::SouthEast  => write!(f, "{}", '╭'),
-            Dir::Ground     => write!(f, "{}", ' '),
+            Dir::Ground     => write!(f, "{}", '.'),
             Dir::Start      => write!(f, "{}", '▒'),
         }
     }
@@ -161,10 +215,12 @@ struct Map {
 }
 
 fn prev(visited: &Vec<(usize, usize)>) -> &(usize, usize) {
+    assert!(visited.len() > 1);
     &visited[visited.len() - 2]
 }
 
 fn curr(visited: &Vec<(usize, usize)>) -> &(usize, usize) {
+    assert!(visited.len() > 0);
     &visited[visited.len() -1]
 }
 
@@ -181,6 +237,22 @@ impl Map {
                 )
                 .collect::<Vec<Vec<Dir>>>()
         }
+    }
+
+    fn width(&self) -> usize {
+        self.map[0].len()
+    }
+
+    fn height(&self) -> usize {
+        self.map.len()
+    }
+
+    fn max_x(&self) -> usize {
+        self.width() - 1
+    }
+
+    fn max_y(&self) -> usize {
+        self.height() -1
     }
 
     fn clean(&mut self) -> Vec<(usize, usize)> {
@@ -209,7 +281,7 @@ impl Map {
                 break;
             }
             nodes.push(next);
-            info!("{:?} -> {:?} {}", prev(&nodes), curr(&nodes), self[*prev(&nodes)]);
+//             info!("{:?} -> {:?} {}", prev(&nodes), curr(&nodes), self[*prev(&nodes)]);
         }
 
         for (y, row) in self.map.iter_mut().enumerate() {
@@ -220,7 +292,7 @@ impl Map {
             }
         }
 
-        info!("Visited: {:?}", nodes);
+//        info!("Visited: {:?}", nodes);
 
         let dir_prev = Direction::from_pos(&start, &nodes[nodes.len()-1]);
         let dir_next = Direction::from_pos(&start, &nodes[1]);
@@ -232,67 +304,29 @@ impl Map {
         nodes
     }
 
-    fn color_map(&self, pipe: &Vec<(usize, usize)>) -> Vec<Vec<usize>> {
-        let max_x = self.map[0].len() - 1;
-        let max_y = self.map.len() - 1;
-        let mut color: Vec<Vec<usize>> = Vec::new();
-
-        let mut a_row: Vec<usize> = Vec::new();
-        a_row.resize(max_x + 1, 0);
-        for _ in 0..=max_y {
-            color.push(a_row.clone());
-        }
+    fn start_fill(&self, pipe: &Vec<(usize, usize)>, right: bool) -> Vec<(usize, usize)> {
+        let max_x = self.max_x();
+        let max_y = self.max_y();
+        let mut start_fill: Vec<(usize, usize)> = Vec::new();
 
         for (node, next) in pipe.windows(2).map(|e| (e[0], e[1])) {
-            info!("{:?} -> {:?}", node, next);
-            color[node.1][node.0] = 2;
-            match Direction::from_pos(&node, &next) {
-                Direction::North => {
-                    if node.0 > 0 && self[(node.0-1, node.1)] == Dir::Ground {
-                        color[node.1][node.0-1] = 0;
-                    }
-                    if node.0 < max_x && self[(node.0+1, node.1)] == Dir::Ground {
-                        color[node.1][node.0+1] = 1;
-                    }
-                }
-                Direction::East => {
-                    if node.1 > 0 && self[(node.0, node.1-1)] == Dir::Ground {
-                        color[node.1-1][node.0] = 0;
-                    }
-                    if node.1 < max_y && self[(node.0, node.1+1)] == Dir::Ground {
-                        color[node.1+1][node.0] = 1;
-                    }
-                }
-                Direction::South => {
-                    if node.0 > 0 && self[(node.0-1, node.1)] == Dir::Ground {
-                        color[node.1][node.0-1] = 1;
-                    }
-                    if node.0 < max_x && self[(node.0+1, node.1)] == Dir::Ground {
-                        color[node.1][node.0+1] = 0;
-                    }
-                }
-                Direction::West => {
-                    if node.1 > 0 && self[(node.0, node.1-1)] == Dir::Ground {
-                        color[node.1-1][node.0] = 1;
-                    }
-                    if node.1 < max_y && self[(node.0, node.1+1)] == Dir::Ground {
-                        color[node.1+1][node.0] = 0;
-                    }
+            let dir;
+            if right {
+                dir = Direction::from_pos(&node, &next).right();
+            } else {
+                dir = Direction::from_pos(&node, &next).left();
+            }
+//            info!("{:?} -> {:?}", node, next);
+            if let Some(fill_node) = dir.goto(&node, max_x, max_y) {
+                if self[fill_node] == Dir::Ground {
+                    start_fill.push(fill_node);
                 }
             }
         }
 
-        let mut string: String = String::new();
-        for (y, row) in color.iter().enumerate() {
-            string.push_str(&format!("\n{:3}-", y));
-            for cell in row.iter() {
-                string.push(if *cell == 1 { '#' } else if *cell == 2 { '+' } else { '.' });
-            }
-        }
+//        info!("{:?}", start_fill);
 
-        info!("{}", string);
-
-        color
+        start_fill.into_iter().filter(|pos| self[*pos] == Dir::Ground).collect::<Vec<(usize, usize)>>()
     }
 }
 
@@ -346,91 +380,88 @@ fn setup_tracing() {
 
 fn main() {
     setup_tracing();
-    println!("{:?}", get_answer("input"));
+    println!("{:?}", get_answer("input", true));
 }
 
-fn successors(color: &Vec<Vec<usize>>, at: &(usize, usize)) -> Vec<(usize, usize)> {
-    let max_x = color[0].len() - 1;
-    let max_y = color.len() - 1;
+fn successors(map: &Map, at: &(usize, usize)) -> Vec<(usize, usize)> {
     let mut list: Vec<(usize, usize)> = Vec::new();
 
-    if at.0 > 0 {
-        list.push((at.0 -1, at.1));
+    if let Some(node) = Direction::North.goto(at, map.max_x(), map.max_y()) {
+        list.push(node);
     }
-    if at.0 < max_x {
-        list.push((at.0 + 1, at.1));
+    if let Some(node) = Direction::South.goto(at, map.max_x(), map.max_y()) {
+        list.push(node);
     }
-    if at.1 > 0 {
-        list.push((at.0, at.1 - 1));
+    if let Some(node) = Direction::East.goto(at, map.max_x(), map.max_y()) {
+        list.push(node);
     }
-    if at.1 < max_y {
-        list.push((at.0, at.1 + 1));
+    if let Some(node) = Direction::West.goto(at, map.max_x(), map.max_y()) {
+        list.push(node);
     }
 
     info!("list: {:?}", list);
 
-    list.into_iter().filter(|pos| color[pos.1][pos.0] == 0usize).collect::<Vec<(usize, usize)>>()
+    list.into_iter().filter(|pos| map[*pos] == Dir::Ground).collect::<Vec<(usize, usize)>>()
 }
 
-fn fill(color: &Vec<Vec<usize>>) -> usize {
-    let mut visited: Vec<(usize, usize)> = Vec::new();
+fn fill(map: &Map, start_fill: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    let mut visited: Vec<(usize, usize)> = start_fill.clone();
 
-    let mut node = (75, 68);
-    let mut stack: Vec<(usize, usize)> = Vec::new();
-    loop {
-        let mut add = successors(color, &node);
+    info!("start_fill: {:?}", start_fill);
+    let mut stack: Vec<(usize, usize)> = start_fill;
+    while let Some(node) = stack.pop() {
+        info!("node: {:?}", node);
+        let mut add = successors(map, &node);
         info!("successors: {:?}", add);
-        if add.len() == 0 {
-            break;
-        }
         for prospect in &add {
             if ! visited.contains(prospect) {
                 stack.push(*prospect);
                 visited.push(*prospect);
             }
         }
-        if let Some(n) = stack.pop() {
-            node = n;
-        } else {
-            break;
-        }
     }
 
+    info!("Stack: {:?}", stack);
     info!("Fill: {}", visited.len());
-    visited.len()
+    visited
 }
 
-fn get_answer(file: &str) -> usize {
+fn get_answer(file: &str, right: bool) -> usize {
     let mut map = Map::new(file);
     info!("{}", map);
     let visited = map.clean();
 
-    let color = map.color_map(&visited);
-    let mut grid = Grid::new(color[0].len(), color.len());
+    let mut start_fill = map.start_fill(&visited, right);
+    start_fill.sort();
+    start_fill.dedup();
+    let mut grid = Grid::new(map.width(), map.height());
 
-    let nr_cells = color.iter().flatten().fold(0usize, |acc, &next| { if next == 1usize { acc + 1 } else { acc }});
-
-    for (y, row) in color.iter().enumerate() {
-        for (x, cell) in row.iter().enumerate() {
-            if *cell > 0 {
-                grid.add_vertex((x, y));
-            }
-        }
+    for node in &start_fill {
+        grid.add_vertex((node.0, node.1));
     }
 
     info!("{:?}", grid);
 
-    info!("nr_cells: {}", nr_cells);
-    fill(&color) + nr_cells
+    let all_nodes = fill(&map, start_fill);
+
+    let mut grid = Grid::new(map.width(), map.height());
+
+    for node in &all_nodes {
+        grid.add_vertex((node.0, node.1));
+    }
+
+    info!("{:?}", grid);
+
+    all_nodes.len()
 }
 
 #[test]
 fn test() {
     setup_tracing();
-    assert_eq!(4, get_answer("test.3"));
-    assert_eq!(4, get_answer("test.4"));
-    assert_eq!(8, get_answer("test.5"));
-    assert_eq!(10, get_answer("test.6"));
+    assert_eq!(4, get_answer("test.3", true));
+    assert_eq!(4, get_answer("test.4", true));
+    assert_eq!(8, get_answer("test.5", false));
+    assert_eq!(10, get_answer("test.6", true));
 }
 
 // 180, 68 - Good starting point?
