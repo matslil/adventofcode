@@ -8,7 +8,7 @@ use std::fs::File;
 use std::sync::Arc;
 use grid::Grid;
 use std::iter::zip;
-use itertools::interleave;
+use itertools::Itertools;
 use rounded_div::RoundedDiv;
 
 fn setup_tracing() {
@@ -40,8 +40,11 @@ fn main() {
 
 // Returns number of columns to the left of reflect point
 fn reflection_col(grid: &Grid<bool>) -> usize {
+    info!("refelction_col");
     let split = grid.cols().rounded_div(2);
-    for col in interleave(split..1, (split+1)..grid.cols()) {
+    info!("{:?} - {:?}", (1..split).rev().collect::<Vec<_>>(), (split..grid.cols()).collect::<Vec<_>>());
+    for col in (1..split).rev().interleave(split..grid.cols()) {
+        info!("{}", col);
         let mut a_match = true;
         for cols in zip((0..col).rev(), col..grid.cols()) {
             if ! zip(grid.iter_col(cols.0), grid.iter_col(cols.1))
@@ -60,8 +63,11 @@ fn reflection_col(grid: &Grid<bool>) -> usize {
 }
 
 fn reflection_row(grid: &Grid<bool>) -> usize {
+    info!("reflection_row");
     let split = grid.rows().rounded_div(2);
-    for row in interleave(split..1, (split+1)..grid.rows()) {
+    info!("{:?} - {:?}", (1..split).rev().collect::<Vec<_>>(), (split..grid.rows()).collect::<Vec<_>>());
+    for row in (1..split).rev().interleave(split..grid.rows()) {
+        info!("{}", row);
         let mut a_match = true;
         for rows in zip((0..row).rev(), row..grid.rows()) {
             if ! zip(grid.iter_row(rows.0), grid.iter_row(rows.1))
