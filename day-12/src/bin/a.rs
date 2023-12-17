@@ -1,3 +1,5 @@
+// 5688 too low
+
 use tracing::{self, info};
 use tracing_subscriber::{filter, prelude::*};
 use std::io::{BufRead, BufReader};
@@ -32,76 +34,186 @@ fn main() {
     println!("{:?}", get_answer("input"));
 }
 
-fn pattern_string(pattern: &Vec<bool>) -> String {
-    let mut string = String::new();
-    for joker in pattern {
-        string.push(match joker {
-            true => '?',
-            false => '#',
-        });
-    }
-    string
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum PatternEntry {
+    Invalid,
+    Valid,
+    Unknown,
 }
 
-fn translate_pattern(level: usize, pattern: Vec<bool>, in_values: VecDeque<usize>) -> usize {
-    let mut count = 0usize;
+impl std::fmt::Display for PatternEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            PatternEntry::Invalid => '.',
+            PatternEntry::Valid => '#',
+            PatternEntry::Unknown => '?',
+        })
+    }
+}
+
+impl std::convert::From<char> for PatternEntry {
+    fn from(value: char) -> Self {
+        match value {
+            '.' => PatternEntry::Invalid,
+            '#' => PatternEntry::Valid,
+            '?' => PatternEntry::Unknown,
+            c   => panic!("{}: Unknown char", c),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct Pattern {
+    pattern: Vec<PatternEntry>,
+}
+
+impl std::fmt::Display for Pattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for entry in &self.pattern {
+            write!(f, "{}", entry)?;
+        }
+        Ok(())
+    }
+}
+
+impl Pattern {
+    fn fits(&self, nr_digits: usize) -> bool {
+        if nr_digits <= self.pattern.len() {
+            self.pattern
+                .iter()
+                .take(nr_digits)
+                .fold(true, |acc, &e| acc && e != PatternEntry::Invalid)
+        } else {
+            false
+        }
+    }
+
+    fn contains_invalid(&self) -> bool {
+        let result = self.pattern.iter().fold(false, |acc, &e| acc || e == PatternEntry::Invalid);
+        result
+    }
+
+    fn valids_or_unknowns_left(&self) -> bool {
+        self.pattern.iter().fold(false, |acc, &e| acc || (e != PatternEntry::Invalid))
+    }
+
+    fn valids_left(&self) -> bool {
+        self.pattern.iter().fold(false, |acc, &e| acc || (e == PatternEntry::Valid))
+    }
+
+    fn len(&self) -> usize {
+        self.pattern.len()
+    }
+
+    fn slice(&self, from: usize) -> Option<Self> {
+        if self.len() > from {
+            Some(Pattern::from_iter(self.pattern.iter()
+                    .skip(from)
+                    .map(|e| *e))
+            )
+        } else {
+            None
+        }
+    }
+
+    fn slice_from(&self, from: usize) -> Option<Self> {
+        if from == 0 || self.len() < (from + 1) {
+            return None
+        }
+        if self.pattern[from] == PatternEntry::Valid {
+            return None
+        }
+        let new_pattern = Pattern::from_iter(self.pattern.iter()
+            .skip(from + 1)
+            .skip_while(|&e| *e == PatternEntry::Invalid)
+            .map(|e| *e));
+        if !new_pattern.pattern.is_empty() {
+            Some(new_pattern)
+        } else {
+            None
+        }
+    }
+}
+
+impl std::convert::From<&str> for Pattern {
+    fn from(value: &str) -> Self {
+        Self { pattern: value
+            .chars()
+            .map(|c| PatternEntry::from(c))
+            .collect::<Vec<PatternEntry>>()
+        }
+    }
+}
+
+impl std::convert::From<&[PatternEntry]> for Pattern {
+    fn from(value: &[PatternEntry]) -> Self {
+        Self { pattern: value.to_vec() }
+    }
+}
+
+impl std::iter::FromIterator<PatternEntry> for Pattern {
+    fn from_iter<I: IntoIterator<Item=PatternEntry>>(iter: I) -> Self {
+        let mut pattern = Vec::new();
+        for item in iter {
+            pattern.push(item);
+        }
+        Self { pattern: pattern }
+    }
+}
+
+fn translate(level: usize, pattern: Pattern, in_values: VecDeque<usize>) -> usize {
     let mut values = in_values.clone();
 
-    info!("{0:1$}translate_pattern({2}, {3:?}", "", level*4, pattern_string(&pattern), values);
+    info!("{0:1$}translate({2}, {3:?}", "", level*4, pattern, values);
 
     if values.len() == 0 {
-        info!("{0:1$}translate_pattern() -> 0", "", level*4);
-        return 0;
+        if !pattern.valids_or_unknowns_left() {
+            info!("{0:1$}translate() -> 1", "", level*4);
+            return 1;
+        } else {
+            info!("{0:1$}translate() -> 0", "", level*4);
+            return 0;
+        }
     }
 
     let value = values.pop_front().unwrap();
 
     if value > pattern.len() {
-        info!("{0:1$}translate_pattern() -> 0", "", level*4);
+        info!("{0:1$}translate() -> 0", "", level*4);
         return 0;
     }
 
-    let mut nr = 0usize;
-    for trial in pattern.windows(value) {
-        let mut pattern_iter = trial.iter();
-        match pattern_iter.next() {
-            None => {
-                nr += 1;
-                continue
-            }
-            Some(c) => if !c {
-                nr += 1;
-                continue
-            } else {
-                if pattern.len() > (nr + value) {
-                    return translate_pattern(
-                        level + 1,
-                        pattern[(nr + value + 1)..].to_vec(),
-                        values.clone()
-                    )
-                }
-            },
-        };
-        nr += 1;
-    }
-
-    if pattern[..value].into_iter().fold(false, |acc, &e| acc || e) && values.len() == 0 {
-        info!("{0:1$}translate_pattern() -> {2}", "", level*4, count);
-        return count;
-    }
-    info!("{0:1$}translate_pattern() -> 0", "", level*4);
-    0
-}
-
-fn translate(patterns: Vec<Vec<bool>>, values: VecDeque<usize>) -> usize {
     let mut count = 0usize;
-    for pattern in patterns {
-        let pattern_count = translate_pattern(0, pattern.clone(), values.clone());
-        count += pattern_count;
-        info!("translate: +{} ({})", pattern_count, count);
+    for (nr, trial) in pattern.pattern.windows(value).map(|e| Pattern::from(e)).enumerate() {
+        info!("{0:1$}translate() trial: {2}", "", level*4, trial);
+        if trial.fits(value) {
+            info!("Fits!");
+            if values.len() == 0 {
+                if let Some(slice) = pattern.slice(nr + value) {
+                    if slice.valids_left() {
+                        info!("Valids left in slice: {}", slice);
+                        info!("{0:1$}translate() -> {2}", "", level*4, count);
+                        return count;
+                    }
+                }
+                count += 1;
+                break;
+            }
+            if let Some(slice) = pattern.slice_from(nr + value) {
+                info!("Rest: {}", slice);
+                if values.len() == 0 && !slice.valids_left() {
+                    count += 1;
+                } else {
+                    count += translate(level + 1, slice, values.clone());
+                }
+            }
+        }
     }
+
+    info!("{0:1$}translate() -> {2}", "", level*4, count);
     count
 }
+
 fn get_answer(file: &str) -> usize {
     setup_tracing();
     let mut count = 0usize;
@@ -112,21 +224,16 @@ fn get_answer(file: &str) -> usize {
             let parts:Vec<&str> = line.as_str()
                 .split_whitespace()
                 .collect();
-            let patterns: Vec<Vec<bool>> = parts[0]
-                .split('.')
-                .filter(|&s| s != "")
-                .map(|s| s
-                    .chars()
-                    .map(|c| c == '?')
-                    .collect::<Vec<bool>>())
-                .collect::<Vec<Vec<bool>>>();
             let values: VecDeque<usize> = parts[1]
                 .split(",")
                 .map(|v| v
                     .parse::<usize>()
                     .unwrap())
                 .collect::<Vec<usize>>().into();
-            count += translate(patterns, values);
+            let pattern = Pattern::from(parts[0]);
+            let add = translate(1, pattern.clone(), values.clone());
+            info!("==== '{}' {:?} -> {} ====", pattern, values, add);
+            count += add;
         }
     count
 }
