@@ -1,4 +1,6 @@
 // 5688 too low
+// 6865 too low
+// 8387 too high
 
 use tracing::{self, info};
 use tracing_subscriber::{filter, prelude::*};
@@ -16,7 +18,10 @@ fn setup_tracing() {
     let file = match file  {Ok(file) => file,Err(error) => panic!("Error: {:?}",error),};
     let debug_log = tracing_subscriber::fmt::layer()
         .with_writer(Arc::new(file))
-        .with_ansi(false);
+        .with_ansi(false)
+        .without_time()
+        .with_file(true)
+        .with_line_number(true);
 
     tracing_subscriber::registry()
         .with(
@@ -164,7 +169,8 @@ impl std::iter::FromIterator<PatternEntry> for Pattern {
 fn translate(level: usize, pattern: Pattern, in_values: VecDeque<usize>) -> usize {
     let mut values = in_values.clone();
 
-    info!("{0:1$}translate({2}, {3:?}", "", level*4, pattern, values);
+    info!("{0:1$}translate({2} ({3}), {4:?})", "",
+        level*4, pattern, pattern.pattern.len(), values);
 
     if values.len() == 0 {
         if !pattern.valids_or_unknowns_left() {
@@ -178,40 +184,41 @@ fn translate(level: usize, pattern: Pattern, in_values: VecDeque<usize>) -> usiz
 
     let value = values.pop_front().unwrap();
 
-    if value > pattern.len() {
+    let stop_at: usize = pattern.pattern.len().saturating_sub(values.iter().sum::<usize>() + values.len().saturating_sub(1));
+    info!("{0:1$}stop_at: {2}", "", level*4, stop_at);
+    if stop_at == 0 {
         info!("{0:1$}translate() -> 0", "", level*4);
         return 0;
     }
 
     let mut count = 0usize;
-    for (nr, trial) in pattern.pattern.windows(value).map(|e| Pattern::from(e)).enumerate() {
-        info!("{0:1$}translate() trial: {2}", "", level*4, trial);
+    for (nr, trial) in pattern.pattern[..stop_at].windows(value).map(|e| Pattern::from(e)).enumerate() {
+        info!("{0:1$}translate() matching {2} against {3}", "", level*4, trial, value);
         if trial.fits(value) {
-            info!("Fits!");
+            info!("{0:1$}Fits!", "", level*4);
             if values.len() == 0 {
                 if let Some(slice) = pattern.slice(nr + value) {
                     if slice.valids_left() {
-                        info!("Valids left in slice: {}", slice);
-                        info!("{0:1$}translate() -> {2}", "", level*4, count);
-                        return count;
+                        info!("{0:1$}Valids left in slice: {2}", "", level*4, slice);
+                        continue;
                     }
                 }
-                count += 1;
-                break;
+                info!("{0:1$}Match!", "", level*4);
+//                count += 1;
+                continue;
             }
             if let Some(slice) = pattern.slice_from(nr + value) {
-                info!("Rest: {}", slice);
-                if values.len() == 0 && !slice.valids_left() {
-                    count += 1;
-                } else {
-                    count += translate(level + 1, slice, values.clone());
-                }
+                count += translate(level + 1, slice, values.clone());
             }
         }
     }
 
     info!("{0:1$}translate() -> {2}", "", level*4, count);
-    count
+    if values.len() == 0 {
+        1
+    } else {
+        count
+    }
 }
 
 fn get_answer(file: &str) -> usize {
