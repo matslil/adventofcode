@@ -281,7 +281,6 @@ impl Map {
                 break;
             }
             nodes.push(next);
-//             info!("{:?} -> {:?} {}", prev(&nodes), curr(&nodes), self[*prev(&nodes)]);
         }
 
         for (y, row) in self.map.iter_mut().enumerate() {
@@ -291,8 +290,6 @@ impl Map {
                 }
             }
         }
-
-//        info!("Visited: {:?}", nodes);
 
         let dir_prev = Direction::from_pos(&start, &nodes[nodes.len()-1]);
         let dir_next = Direction::from_pos(&start, &nodes[1]);
@@ -378,11 +375,6 @@ fn setup_tracing() {
         .init();
 }
 
-fn main() {
-    setup_tracing();
-    println!("{:?}", get_answer("input", true));
-}
-
 fn successors(map: &Map, at: &(usize, usize)) -> Vec<(usize, usize)> {
     let mut list: Vec<(usize, usize)> = Vec::new();
 
@@ -455,6 +447,11 @@ fn get_answer(file: &str, right: bool) -> usize {
     all_nodes.len()
 }
 
+fn main() {
+    setup_tracing();
+    println!("{:?}", get_answer("input", false));
+}
+
 #[test]
 fn test() {
     setup_tracing();
@@ -463,6 +460,4 @@ fn test() {
     assert_eq!(8, get_answer("test.5", false));
     assert_eq!(10, get_answer("test.6", true));
 }
-
-// 180, 68 - Good starting point?
 
