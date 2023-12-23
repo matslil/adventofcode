@@ -12,3 +12,4 @@ itertools = "0.12"
 text_io = "0.1"
 num = "0.4"
 pathfinding = "4.4"
+rust-tools = { path="../../rust-tools" }

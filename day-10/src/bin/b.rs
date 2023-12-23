@@ -3,6 +3,7 @@
 // 13979 too high
 // 484 nope
 // 487 nope
+// 488 nope
 
 use tracing::{self, info};
 use tracing_subscriber::{filter, prelude::*};
@@ -10,241 +11,54 @@ use std::io::{BufRead, BufReader};
 use std::fs::File;
 use std::sync::Arc;
 use pathfinding::prelude::Grid;
+use rust_tools::direction::{Turn, StraightDirection, Pipe};
+use rust_tools::grid2d::Grid2D;
+use std::collections::HashMap;
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum Direction {
-    North,
-    East,
-    South,
-    West
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MapEntry {
+    Pipe(Pipe),
+    Ground,
+    Start,
 }
 
-impl Direction {
-    fn from_pos(from: &(usize, usize), to: &(usize, usize)) -> Self {
-        match (to.0 as isize - from.0 as isize, to.1 as isize - from.1 as isize) {
-            (0, -1) => Direction::North,
-            (1, 0) => Direction::East,
-            (0, 1) => Direction::South,
-            (-1, 0) => Direction::West,
-            _ => panic!("{:?} -> {:?}: Cannot translate to direction", from, to),
-        }
-    }
-
-    fn goto(&self, from: &(usize, usize), max_x: usize, max_y: usize) -> Option<(usize, usize)> {
-        match self {
-            Direction::North => if from.1 > 0 {
-                Some((from.0, from.1 - 1))
-            } else {
-                None
-            }
-            Direction::East => if from.0 < max_x {
-                Some((from.0 + 1, from.1))
-            } else {
-                None
-            }
-            Direction::South => if from.1 < max_y {
-                Some((from.0, from.1 + 1))
-            } else {
-                None
-            }
-            Direction::West => if from.0 > 0 {
-                Some((from.0 - 1, from.1))
-            } else {
-                None
-            }
-        }
-    }
-
-    fn opposite(&self) -> Direction {
-        match self {
-            Direction::North => Direction::South,
-            Direction::East => Direction::West,
-            Direction::South => Direction::North,
-            Direction::West => Direction::East,
-        }
-    }
-
-    fn right(&self) -> Direction {
-        match self {
-            Direction::North => Direction::East,
-            Direction::East => Direction::South,
-            Direction::South => Direction::West,
-            Direction::West => Direction::North,
-        }
-    }
-
-    fn left(&self) -> Direction {
-        match self {
-            Direction::North => Direction::West,
-            Direction::East => Direction::North,
-            Direction::South => Direction::East,
-            Direction::West => Direction::South,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-enum Dir {
-    EastWest,   // |
-    NorthSouth, // -
-    NorthEast,  // L
-    NorthWest,  // J
-    SouthWest,  // 7
-    SouthEast,  // F
-    Ground,     // .
-    Start,      // S
-}
-
-impl std::convert::From<char> for Dir {
-    fn from(value: char) -> Self {
-        match value {
-            '|' => Dir::NorthSouth,
-            '-' => Dir::EastWest,
-            'L' => Dir::NorthEast,
-            'J' => Dir::NorthWest,
-            '7' => Dir::SouthWest,
-            'F' => Dir::SouthEast,
-            '.' => Dir::Ground,
-            'S' => Dir::Start,
-            _   => panic!("{}: Unknown character", value),
-        }
-    }
-}
-
-impl std::convert::From<[Direction;2]> for Dir {
-    fn from(value: [Direction;2]) -> Self {
-        if value.contains(&Direction::North) {
-            if value.contains(&Direction::East) {
-                Dir::NorthEast
-            } else if value.contains(&Direction::South) {
-                Dir::NorthSouth
-            } else {
-                Dir::NorthWest
-            }
-        } else if value.contains(&Direction::South) {
-            if value.contains(&Direction::East) {
-                Dir::SouthEast
-            } else {
-                Dir::SouthWest
-            }
-        } else {
-            Dir::EastWest
-        }
-    }
-}
-
-impl std::fmt::Display for Dir {
+impl std::fmt::Display for MapEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Dir::EastWest   => write!(f, "{}", '─'),
-            Dir::NorthSouth => write!(f, "{}", '│'),
-            Dir::NorthEast  => write!(f, "{}", '╰'),
-            Dir::NorthWest  => write!(f, "{}", '╯'),
-            Dir::SouthWest  => write!(f, "{}", '╮'),
-            Dir::SouthEast  => write!(f, "{}", '╭'),
-            Dir::Ground     => write!(f, "{}", '.'),
-            Dir::Start      => write!(f, "{}", '▒'),
+            MapEntry::Pipe(p) => write!(f, "{}", p),
+            MapEntry::Ground => write!(f, "."),
+            MapEntry::Start => write!(f, "S"),
         }
     }
 }
-
-impl Dir {
-    fn next(&self, prev: &(usize, usize), curr: &(usize, usize)) -> (usize, usize) {
-        let diff: (isize, isize) =
-            (prev.0 as isize - curr.0 as isize,
-             prev.1 as isize - curr.1 as isize);
-
-        let apply: (isize, isize) = match self {
-            Dir::EastWest   => if diff == (-1, 0) {
-                (2, 0)
-            } else {
-                (-2, 0)
-            }
-            Dir::NorthSouth => if diff == (0, -1) {
-                (0, 2)
-            } else {
-                (0, -2)
-            }
-            Dir::NorthEast  => if diff == (0, -1) {
-                (1, 1)
-            } else {
-                (-1, -1)
-            }
-            Dir::NorthWest  => if diff == (0, -1) {
-                (-1, 1)
-            } else {
-                (1, -1)
-            }
-            Dir::SouthWest  => if diff == (-1, 0) {
-                (1, 1)
-            } else {
-                (-1, -1)
-            }
-            Dir::SouthEast  => if diff == (1, 0) {
-                (-1, 1)
-            } else {
-                (1, -1)
-            }
-            _               => panic!("{:?}: Direction not supported!", self),
-        };
-
-        info!("next({:?}, {:?}), diff: {:?}, apply: {:?}", prev, curr, diff, apply);
-
-        ((prev.0 as isize + apply.0) as usize, (prev.1 as isize + apply.1) as usize)
-    }
-
-    // Returns from <-> to directions
-    fn directions(&self) -> Vec<Direction> {
-        match self {
-            Dir::EastWest   => vec![Direction::East, Direction::West],
-            Dir::NorthSouth => vec![Direction::North, Direction::South],
-            Dir::NorthEast  => vec![Direction::North, Direction::East],
-            Dir::NorthWest  => vec![Direction::North, Direction::West],
-            Dir::SouthWest  => vec![Direction::South, Direction::West],
-            Dir::SouthEast  => vec![Direction::South, Direction::East],
-            Dir::Ground     => Vec::new(),
-            Dir::Start      => Vec::new(),
-        }
-    }
-}
-
-
 
 struct Map {
-    map: Vec<Vec<Dir>>,
+    map: Grid2D<MapEntry>,
 }
-
-fn prev(visited: &Vec<(usize, usize)>) -> &(usize, usize) {
-    assert!(visited.len() > 1);
-    &visited[visited.len() - 2]
-}
-
-fn curr(visited: &Vec<(usize, usize)>) -> &(usize, usize) {
-    assert!(visited.len() > 0);
-    &visited[visited.len() -1]
-}
-
 
 impl Map {
     fn new(file: &str) -> Self {
-        Self { map:  BufReader::new(File::open(file).unwrap())
-            .lines()
-                .map(|e| e
-                    .unwrap()
-                    .chars()
-                    .map(|e| Into::<Dir>::into(e))
-                    .collect::<Vec<Dir>>()
-                )
-                .collect::<Vec<Vec<Dir>>>()
-        }
+        Self { map:  Grid2D::new(
+            &mut BufReader::new(&mut File::open(file).unwrap()).lines().map(|e| e.unwrap()),
+            HashMap::from([
+                ('|', MapEntry::Pipe(Pipe::NorthSouth)),
+                ('-', MapEntry::Pipe(Pipe::EastWest)),
+                ('7', MapEntry::Pipe(Pipe::SouthWest)),
+                ('F', MapEntry::Pipe(Pipe::SouthEast)),
+                ('L', MapEntry::Pipe(Pipe::NorthEast)),
+                ('J', MapEntry::Pipe(Pipe::NorthWest)),
+                ('.', MapEntry::Ground),
+                ('S', MapEntry::Start),
+            ])
+        )}
     }
 
     fn width(&self) -> usize {
-        self.map[0].len()
+        self.map.cols()
     }
 
     fn height(&self) -> usize {
-        self.map.len()
+        self.map.rows()
     }
 
     fn max_x(&self) -> usize {
@@ -255,12 +69,50 @@ impl Map {
         self.height() -1
     }
 
-    fn clean(&mut self) -> Vec<(usize, usize)> {
+    fn pipe_loop(&self, start: (usize, usize)) -> Option<Vec<(usize, usize)>> {
+        let mut chain: Vec<(usize, usize)> = Vec::new();
+
+        if let MapEntry::Pipe(_) = self[start] {
+            let mut current = start;
+
+            loop {
+                if let MapEntry::Pipe(from_entry) = self.map[current] {
+                    chain.push(current);
+                    let next = self.map.successors_with(current, |&to_entry, to| {
+                        if chain.len() > 1 && chain[chain.len()-2] == to {
+                            false
+                        } else if let MapEntry::Pipe(to_pipe) = to_entry {
+                            if let Some(dir) = StraightDirection::from_pos(current, to) {
+                                let result = from_entry.is_connected_to(dir, to_pipe);
+                                result
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    });
+                    if next.len() == 0 {
+                        return Some(chain);
+                    } else if next.len() != 1 {
+                        return None
+                    }
+                    current = next[0];
+                } else {
+                    return None;
+                }
+            }
+        } else {
+            return None
+        }
+    }
+
+    fn clean(&mut self) -> (Turn, Vec<(usize, usize)>) {
         let mut start: (usize, usize) = (0, 0);
 
-        for (y, row) in self.map.iter().enumerate() {
+        for (y, row) in self.map.row_iter().enumerate() {
             for (x, cell) in row.iter().enumerate() {
-                if *cell == Dir::Start {
+                if **cell == MapEntry::Start {
                     start = (x, y);
                     break;
                 }
@@ -269,53 +121,67 @@ impl Map {
 
         info!("start: {:?} {}", start, self[start]);
 
-        // Manual look at the map tells that we can start at east
-        let mut nodes: Vec<(usize, usize)> = Vec::new();
-        nodes.push(start);
-        nodes.push((start.0 + 1, start.1));
-
-        loop {
-            let next = self[*curr(&nodes)].next(
-                prev(&nodes), curr(&nodes));
-            if next == start {
+        // Try all four directions, until a complete loop has been detected
+        let mut pipes: Vec<(usize, usize)> = Vec::new();
+        pipes.push(start);
+        for node in self.map.successors(start) {
+            info!("node: {:?}", node);
+            if let Some(mut a_loop) = self.pipe_loop(node) {
+                if a_loop.len() > 1 {
+                    pipes.append(&mut a_loop);
+                }
                 break;
             }
-            nodes.push(next);
         }
 
-        for (y, row) in self.map.iter_mut().enumerate() {
-            for (x, cell) in row.iter_mut().enumerate() {
-                if ! nodes.contains(&(x, y)) {
-                    *cell = Dir::Ground;
+        assert!(pipes.len() > 1);
+
+        let turns = if pipes.windows(2)
+            .map(|e| StraightDirection::from_pos(e[0], e[1]).unwrap())
+            .collect::<Vec<_>>()
+            .windows(2).map(|e| Turn::from([e[0], e[1]]))
+            .fold(0isize, |acc, e|
+                acc + match e {
+                    Turn::Right => 1,
+                    Turn::Left => -1,
+                    Turn::Straight => 0,
+                }
+            ) > 0 { Turn::Right } else { Turn::Left };
+
+        info!("{:?}", turns);
+
+        let dir_prev = StraightDirection::from_pos(start, pipes[pipes.len()-1]).unwrap();
+        let dir_next = StraightDirection::from_pos(start, pipes[1]).unwrap();
+
+        self[start] = MapEntry::Pipe(Pipe::try_from([dir_prev, dir_next]).unwrap());
+
+        for row in 0..self.map.rows() {
+            for col in 0..self.map.cols() {
+                let pos = (col, row);
+                if !pipes.contains(&pos) {
+                    self.map[pos] = MapEntry::Ground;
                 }
             }
         }
 
-        let dir_prev = Direction::from_pos(&start, &nodes[nodes.len()-1]);
-        let dir_next = Direction::from_pos(&start, &nodes[1]);
-
-        self[start] = [dir_prev, dir_next].into();
-
         info!("{}", self);
 
-        nodes
+        (turns, pipes)
     }
 
-    fn start_fill(&self, pipe: &Vec<(usize, usize)>, right: bool) -> Vec<(usize, usize)> {
-        let max_x = self.max_x();
-        let max_y = self.max_y();
+    fn start_fill(&self, pipe: &Vec<(usize, usize)>, turn: Turn) -> Vec<(usize, usize)> {
         let mut start_fill: Vec<(usize, usize)> = Vec::new();
 
         for (node, next) in pipe.windows(2).map(|e| (e[0], e[1])) {
             let dir;
-            if right {
-                dir = Direction::from_pos(&node, &next).right();
+            if turn == Turn::Right {
+                dir = StraightDirection::from_pos(node, next).unwrap().turn(Turn::Right);
             } else {
-                dir = Direction::from_pos(&node, &next).left();
+                dir = StraightDirection::from_pos(node, next).unwrap().turn(Turn::Left);
             }
 //            info!("{:?} -> {:?}", node, next);
-            if let Some(fill_node) = dir.goto(&node, max_x, max_y) {
-                if self[fill_node] == Dir::Ground {
+            if let Some(fill_node) = dir.follow(node, 1) {
+                if self.map.is_in_range(fill_node) && self[fill_node] == MapEntry::Ground {
                     start_fill.push(fill_node);
                 }
             }
@@ -323,13 +189,13 @@ impl Map {
 
 //        info!("{:?}", start_fill);
 
-        start_fill.into_iter().filter(|pos| self[*pos] == Dir::Ground).collect::<Vec<(usize, usize)>>()
+        start_fill.into_iter().filter(|pos| self[*pos] == MapEntry::Ground).collect::<Vec<(usize, usize)>>()
     }
 }
 
 impl std::fmt::Display for Map {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        for row in &self.map {
+        for row in self.map.row_iter() {
             write!(f, "\n")?;
             for cell in row {
                 write!(f, "{}", cell)?;
@@ -340,15 +206,15 @@ impl std::fmt::Display for Map {
 }
 
 impl std::ops::Index<(usize, usize)> for Map {
-    type Output = Dir;
-    fn index(&self, index: (usize, usize)) -> &Dir {
-        &self.map[index.1][index.0]
+    type Output = MapEntry;
+    fn index(&self, index: (usize, usize)) -> &MapEntry {
+        &self.map[index]
     }
 }
 
 impl std::ops::IndexMut<(usize, usize)> for Map {
-    fn index_mut(&mut self, index: (usize, usize)) -> &mut Dir {
-        &mut self.map[index.1][index.0]
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut MapEntry {
+        &mut self.map[index]
     }
 }
 
@@ -378,22 +244,30 @@ fn setup_tracing() {
 fn successors(map: &Map, at: &(usize, usize)) -> Vec<(usize, usize)> {
     let mut list: Vec<(usize, usize)> = Vec::new();
 
-    if let Some(node) = Direction::North.goto(at, map.max_x(), map.max_y()) {
-        list.push(node);
+    if let Some(node) = StraightDirection::North.follow(*at, 1) {
+        if map.map.is_in_range(node) {
+            list.push(node);
+        }
     }
-    if let Some(node) = Direction::South.goto(at, map.max_x(), map.max_y()) {
-        list.push(node);
+    if let Some(node) = StraightDirection::South.follow(*at, 1) {
+        if map.map.is_in_range(node) {
+            list.push(node);
+        }
     }
-    if let Some(node) = Direction::East.goto(at, map.max_x(), map.max_y()) {
-        list.push(node);
+    if let Some(node) = StraightDirection::East.follow(*at, 1) {
+        if map.map.is_in_range(node) {
+            list.push(node);
+        }
     }
-    if let Some(node) = Direction::West.goto(at, map.max_x(), map.max_y()) {
-        list.push(node);
+    if let Some(node) = StraightDirection::West.follow(*at, 1) {
+        if map.map.is_in_range(node) {
+            list.push(node);
+        }
     }
 
     info!("list: {:?}", list);
 
-    list.into_iter().filter(|pos| map[*pos] == Dir::Ground).collect::<Vec<(usize, usize)>>()
+    list.into_iter().filter(|pos| map[*pos] == MapEntry::Ground).collect::<Vec<(usize, usize)>>()
 }
 
 fn fill(map: &Map, start_fill: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
@@ -403,7 +277,7 @@ fn fill(map: &Map, start_fill: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
     let mut stack: Vec<(usize, usize)> = start_fill;
     while let Some(node) = stack.pop() {
         info!("node: {:?}", node);
-        let mut add = successors(map, &node);
+        let add = successors(map, &node);
         info!("successors: {:?}", add);
         for prospect in &add {
             if ! visited.contains(prospect) {
@@ -421,9 +295,9 @@ fn fill(map: &Map, start_fill: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
 fn get_answer(file: &str, right: bool) -> usize {
     let mut map = Map::new(file);
     info!("{}", map);
-    let visited = map.clean();
+    let (turn, visited) = map.clean();
 
-    let mut start_fill = map.start_fill(&visited, right);
+    let mut start_fill = map.start_fill(&visited, turn);
     start_fill.sort();
     start_fill.dedup();
     let mut grid = Grid::new(map.width(), map.height());
