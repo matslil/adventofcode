@@ -171,18 +171,25 @@ impl Map {
 
     fn start_fill(&self, pipe: &Vec<(usize, usize)>, turn: Turn) -> Vec<(usize, usize)> {
         let mut start_fill: Vec<(usize, usize)> = Vec::new();
+        let mut dir;
 
         for (node, next) in pipe.windows(2).map(|e| (e[0], e[1])) {
-            let dir;
+            dir = StraightDirection::from_pos(node, next).unwrap();
+            let fill_dir;
             if turn == Turn::Right {
-                dir = StraightDirection::from_pos(node, next).unwrap().turn(Turn::Right);
+                fill_dir = dir.turn(Turn::Right);
             } else {
-                dir = StraightDirection::from_pos(node, next).unwrap().turn(Turn::Left);
+                fill_dir = dir.turn(Turn::Left);
             }
 //            info!("{:?} -> {:?}", node, next);
-            if let Some(fill_node) = dir.follow(node, 1) {
+            if let Some(fill_node) = fill_dir.follow(node, 1) {
                 if self.map.is_in_range(fill_node) && self[fill_node] == MapEntry::Ground {
                     start_fill.push(fill_node);
+                    if let Some(another_fill) = dir.follow(fill_node, 1) {
+                        if self.map.is_in_range(another_fill) && self[another_fill] == MapEntry::Ground {
+                            start_fill.push(another_fill);
+                        }
+                    }
                 }
             }
         }
