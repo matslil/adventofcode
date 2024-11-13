@@ -321,7 +321,10 @@ fn get_answer(file: &str, right: bool) -> usize {
 
     for node in &all_nodes {
         grid.add_vertex((node.0, node.1));
+        map[*node] = MapEntry::Start;
     }
+
+    info!("{}", map);
 
     info!("{:?}", grid);
 
