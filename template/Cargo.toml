@@ -1,0 +1,16 @@
+[package]
+name = "{{project-name}}"
+version = "0.1.0"
+authors = ["{{authors}}"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+flexi_logger = "0.29.6"
+itertools = "0.13.0"
+log = "0.4.22"
+num = "0.4.3"
+pathfinding = "4.11.0"
+rust-tools = { path="../../rust-tools" }
+text_io = "0.1.12"
