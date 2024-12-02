@@ -5,7 +5,8 @@ use tracing_subscriber::{filter, prelude::*};
 use std::{fs::File, sync::Arc};
 use tracing::{info, debug};
 use std::io::{BufRead, BufReader};
-use std::collections::VecDeque;
+use itertools::Itertools;
+use itertools::FoldWhile::{Continue, Done};
 
 fn setup_tracing() {
     let stdout_log = tracing_subscriber::fmt::layer()
@@ -44,64 +45,54 @@ fn get_answer(file: &str) -> usize {
 
     let mut nr_safe_reports: usize = 0;
 
-    let mut report_nr: usize = 0;
     for report in reports {
-        report_nr += 1;
-        debug!("---- Report nr: {} ----", report_nr);
-        let violations = count_violations(&report.try_into().unwrap(), None, None, 0);
-        if violations <= 1 {
-            debug!("Report is safe");
+        if report_valid(&report) {
             nr_safe_reports += 1;
         } else {
-            debug!("Report is unssafe: Violations: {}", violations);
+            for remove_idx in 0..report.len() {
+                let mut report_modified = report.clone();
+                report_modified.remove(remove_idx);
+                if report_valid(&report_modified) {
+                    nr_safe_reports += 1;
+                    break;
+                }
+            }
         }
     }
 
     return nr_safe_reports;
 }
 
-fn count_violations(report_arg: &VecDeque<isize>, ascending_arg: Option<bool>, previous_arg: Option<isize>, violations_arg: usize) -> usize {
-    let mut violations = violations_arg;
-    let mut ascending = ascending_arg;
-    let mut previous = previous_arg;
-    let mut report = report_arg.clone();
+fn report_valid(report: &Vec<isize>) -> bool
+{
+    let _tracing_span = tracing::span!(tracing::Level::DEBUG, "report_valid", "report: {:?}", report).entered();
+    let mut ascending: Option<bool> = None;
 
-    while let Some(level) = report.pop_front() {
-        if previous == None {
-            previous = Some(level);
-        } else {
-            debug!("({}, {})", previous.unwrap(), level);
-            let diff = level.abs_diff(previous.unwrap());
-            if diff < 1 || diff > 3 {
-                debug!("Diff {}: Not safe", diff);
-                violations += 1;
-            }
-            match ascending {
-                None => ascending = Some(level > previous.unwrap()),
-                Some(true) => if level < previous.unwrap() {
-                    debug!("ascending -> descending: Not safe");
-                    violations += 1;
-                },
-                Some(false) => if level > previous.unwrap() {
-                    debug!("descending -> ascending: Not safe");
-                    violations += 1;
-                },
-            }
-            if violations > 1 {
-                break;
-            }
-            if violations == 0 {
-                previous = Some(level);
+    let result = report.windows(2)
+        .fold_while(true, | _, value | {
+            debug!("({}, {})", value[0], value[1]);
+            if ! (1..=3).contains(&value[0].abs_diff(value[1]))
+            {
+                debug!("Diff too high");
+                Done(false)
             } else {
-                return std::cmp::min(
-                    count_violations(&report, ascending, previous, violations),
-                    if let Some(_) = report.pop_front() { count_violations(&report, ascending, previous, violations) } else { 0 }
-                );
+                if let Some(asc) = ascending {
+                    if (value[0] > value[1]) == asc {
+                        Continue(true)
+                    } else {
+                        debug!("Ascending violation");
+                        Done(false)
+                    }
+                } else {
+                    ascending = Some(value[0] > value[1]);
+                    Continue(true)
+                }
             }
-        }
-    }
-    debug!("Returned violations: {}", violations);
-    return violations;
+        })
+    .into_inner();
+
+    debug!("report_valid() -> {}", result);
+    result
 }
 
 #[test]
