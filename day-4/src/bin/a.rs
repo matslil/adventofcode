@@ -1,11 +1,13 @@
 // use flexi_logger;
 // use log::{info, warn};
 
+// 2577 too low
+
 use tracing_subscriber::{filter, prelude::*};
 use std::{fs::File, sync::Arc};
 use tracing::{info, debug, warn};
 use std::io::{BufRead, BufReader};
-use std::cmp::{max, min};
+use std::cmp::min;
 
 fn setup_tracing() {
     let stdout_log = tracing_subscriber::fmt::layer()
@@ -41,8 +43,8 @@ fn main() {
 fn is_match(slice: &[char], start: usize) -> bool
 {
     let match_against = ['X', 'M', 'A', 'S'];
-    for index in 0..4 {
-        if slice[start + index] != match_against[index] {
+    for index in match_against.into_iter().enumerate() {
+        if slice[start + index.0] != index.1 {
             return false;
         }
     }
@@ -73,6 +75,7 @@ fn get_answer(file: &str) -> usize {
         })
         .collect::<Vec<_>>();
 
+    debug!("Dimension: {} x {}", input.len(), input[0].len());
     let mut all: Vec<Vec<char>> = Vec::new();
 
     let mut current: Vec<char> = Vec::new();
@@ -80,7 +83,7 @@ fn get_answer(file: &str) -> usize {
     // All rows
     for x in 0..input.len() {
         let _span = tracing::span!(tracing::Level::DEBUG, "Row", "{}", x).entered();
-        for y in 0..input.len() {
+        for y in 0..input[0].len() {
             current.push(input[x][y]);
         }
         all.push(current.clone());
@@ -91,7 +94,7 @@ fn get_answer(file: &str) -> usize {
     }
 
     // All columns
-    for y in 0..input.len() {
+    for y in 0..input[0].len() {
         let _span = tracing::span!(tracing::Level::DEBUG, "Column", "{}", y).entered();
         for x in 0..input.len() {
             current.push(input[x][y]);
@@ -107,44 +110,6 @@ fn get_answer(file: &str) -> usize {
     for start_x in 0..input.len() {
         let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 1 x", "{}", start_x).entered();
         for index in 0..min(input.len(), input[0].len()) {
-            if start_x + index >= min(input.len(), input[0].len()) {
-                continue;
-            }
-            let x = start_x + index;
-            let y = index;
-            debug!("({},{})", x, y);
-            current.push(input[x][y]);
-        }
-        all.push(current.clone());
-        debug!("Forward:  {:?}", all[all.len()-1]);
-        all.push(current.iter().copied().rev().collect());
-        debug!("Backward: {:?}", all[all.len()-1]);
-        current.clear();
-    }
-
-    for start_y in 0..input[0].len() {
-        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 1 y", "{}", start_y).entered();
-        for index in 0..min(input.len(), input[0].len()) {
-            if start_y + index >= min(input.len(), input[0].len()) {
-                continue;
-            }
-            let x = index;
-            let y = start_y + index;
-            debug!("({},{})", x, y);
-            current.push(input[x][y]);
-        }
-        all.push(current.clone());
-        debug!("Forward:  {:?}", all[all.len()-1]);
-        all.push(current.iter().copied().rev().collect());
-        debug!("Backward: {:?}", all[all.len()-1]);
-        current.clear();
-    }
-
-    // Diagonal 2
-
-    for start_x in 0..input.len() {
-        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2 x", "{}", start_x).entered();
-        for index in (0..min(input.len(), input[0].len())).rev() {
             if start_x + index >= input.len() {
                 continue;
             }
@@ -153,16 +118,18 @@ fn get_answer(file: &str) -> usize {
             debug!("({},{})", x, y);
             current.push(input[x][y]);
         }
-        all.push(current.clone());
-        debug!("Forward:  {:?}", all[all.len()-1]);
-        all.push(current.iter().copied().rev().collect());
-        debug!("Backward: {:?}", all[all.len()-1]);
+        if current.len() >= 4 {
+            all.push(current.clone());
+            debug!("Forward:  {:?}", all[all.len()-1]);
+            all.push(current.iter().copied().rev().collect());
+            debug!("Backward: {:?}", all[all.len()-1]);
+        }
         current.clear();
     }
 
-    for start_y in 0..input[0].len() {
-        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2 y", "{}", start_y).entered();
-        for index in (0..min(input.len(), input[0].len())).rev() {
+    for start_y in 1..input[0].len() {
+        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 1 y", "{}", start_y).entered();
+        for index in 0..min(input.len(), input[0].len()) {
             if start_y + index >= input[0].len() {
                 continue;
             }
@@ -171,10 +138,54 @@ fn get_answer(file: &str) -> usize {
             debug!("({},{})", x, y);
             current.push(input[x][y]);
         }
-        all.push(current.clone());
-        debug!("Forward:  {:?}", all[all.len()-1]);
-        all.push(current.iter().copied().rev().collect());
-        debug!("Backward: {:?}", all[all.len()-1]);
+        if current.len() >= 4 {
+            all.push(current.clone());
+            debug!("Forward:  {:?}", all[all.len()-1]);
+            all.push(current.iter().copied().rev().collect());
+            debug!("Backward: {:?}", all[all.len()-1]);
+        }
+        current.clear();
+    }
+
+    // Diagonal 2
+
+    for start_x in 0..input.len() {
+        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2 x", "{}", start_x).entered();
+        for index in (0..min(input.len(), input[0].len())).rev() {
+            let x = start_x + (input.len() - index - 1);
+            if x >= input.len() {
+                break;
+            }
+            let y = index;
+            debug!("({},{})", x, y);
+            current.push(input[x][y]);
+        }
+        if current.len() >= 4 {
+            all.push(current.clone());
+            debug!("Forward:  {:?}", all[all.len()-1]);
+            all.push(current.iter().copied().rev().collect());
+            debug!("Backward: {:?}", all[all.len()-1]);
+        }
+        current.clear();
+    }
+
+    for start_y in 1..input[0].len() {
+        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2 y", "{}", start_y).entered();
+        for index in (0..min(input.len(), input[0].len())).rev() {
+            let x = index;
+            let y = start_y + (input[0].len() - index - 1);
+            if y >= input[0].len() {
+                break;
+            }
+            debug!("({},{})", x, y);
+            current.push(input[x][y]);
+        }
+        if current.len() >= 4 {
+            all.push(current.clone());
+            debug!("Forward:  {:?}", all[all.len()-1]);
+            all.push(current.iter().copied().rev().collect());
+            debug!("Backward: {:?}", all[all.len()-1]);
+        }
         current.clear();
     }
 
