@@ -4,6 +4,7 @@
 use tracing_subscriber::{filter, prelude::*};
 use std::{fs::File, sync::Arc};
 use tracing::{info, debug, warn};
+use std::io::{BufRead, BufReader};
 
 fn setup_tracing() {
     let stdout_log = tracing_subscriber::fmt::layer()
@@ -37,6 +38,7 @@ fn main() {
 }
 
 fn get_answer(file: &str) -> usize {
+    let mut input: Vec<Vec<String>> = BufReader::new(File::open(file).unwrap()).lines();
     info!("{:?}: Using as input data", file);
     return 1;
 }
