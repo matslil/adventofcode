@@ -75,7 +75,11 @@ fn match_str(iter: &mut Peekable<impl Iterator<Item=char>>, s: &str) -> bool
         }
         iter.next();
     }
-    false
+    if iter_match.next() == None {
+        true
+    } else {
+        false
+    }
 }
 
 fn find_char(iter: &mut Peekable<impl Iterator<Item=char>>, c: char) -> bool {
@@ -116,6 +120,7 @@ fn get_mult(iter: &mut Peekable<impl Iterator<Item=char>>) -> Option<u32> {
     if !match_str(iter, ")") {
         return Some(0);
     }
+    debug!("{} * {} = {}", lhs, rhs, lhs*rhs);
     return Some(lhs * rhs);
 }
 
