@@ -160,8 +160,8 @@ fn get_answer(file: &str) -> u32 {
         .lines()
         .flat_map(|line| {
             match line {
-                Ok(line_content) => line_content.chars().collect::<Vec<_>>(), // Collect to avoid borrowing
-                Err(_) => Vec::new(), // Handle potential errors gracefully        .peekable();
+                Ok(line_content) => line_content.chars().collect::<Vec<_>>(),
+                Err(_) => Vec::new(),
             }
         }).peekable();
     while let Some(value) = execute_next(&mut input, &mut mul_enabled) {
