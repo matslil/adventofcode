@@ -26,10 +26,6 @@ fn setup_tracing() {
                 .and_then(debug_log)
         )
         .init();
-
-    debug!("Debug message example");
-    info!("Info message example");
-    warn!("Warning message example");
 }
 
 fn main() {
@@ -38,14 +34,13 @@ fn main() {
 }
 
 fn get_answer(file: &str) -> usize {
-    let mut input: Vec<Vec<String>> = BufReader::new(File::open(file).unwrap()).lines();
-    info!("{:?}: Using as input data", file);
+    let mut input: Vec<Vec<String>> = BufReader::new(File::open(file).unwrap()).lines()
+        .filter_map(Result::ok);
     return 1;
 }
 
 #[test]
 fn test() {
     setup_tracing();
-    assert_eq!(4, get_answer("test.1"));
-    assert_eq!(8, get_answer("test.2"));
+    assert_eq!(4, get_answer("test.a"));
 }
