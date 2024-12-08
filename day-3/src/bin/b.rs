@@ -2,15 +2,14 @@
 
 use tracing_subscriber::{filter, prelude::*};
 use std::{fs::File, sync::Arc};
-use tracing::{info, debug};
+use tracing::{info, debug, warn};
 // use itertools::Itertools;
 // use itertools::FoldWhile::{Continue, Done};
 use std::io::{BufRead, BufReader};
 use std::iter::Peekable;
 
 fn setup_tracing() {
-    let stdout_log = tracing_subscriber::fmt::layer()
-        .pretty();
+    let stdout_log = tracing_subscriber::fmt::layer();
 
     // A layer that logs events to a file.
     let file = File::create("debug.log");
@@ -36,11 +35,12 @@ fn main() {
 }
 
 fn get_int(iter: &mut Peekable<impl Iterator<Item=char>>) -> Option<u32> {
+    let _span0 = tracing::span!(tracing::Level::INFO, "get_int").entered();
+
     let mut result: Option<u32> = None;
     while let Some(chr) = iter.peek() {
-        debug!("get_int(): Peek: {}", chr);
+        debug!("ch: {}", chr);
         if let Some(value) = chr.to_digit(10) {
-            debug!("Was int");
             iter.next();
             if result == None {
                 result = Some(value);
@@ -48,45 +48,49 @@ fn get_int(iter: &mut Peekable<impl Iterator<Item=char>>) -> Option<u32> {
                 result = Some(result.unwrap() * 10 + value);
             }
         } else {
-            debug!("No int");
             break;
         }
     }
-    debug!("Got int: {:?}", result);
+    if let Some(value) = result {
+        debug!("{:?}", value);
+    }
     result
 }
 
-fn match_str(iter: &mut Peekable<impl Iterator<Item=char>>, s: &str) -> bool
+fn match_char(iter: &mut Peekable<impl Iterator<Item=char>>, ch: char) -> bool
 {
-    let mut iter_match = s.chars();
-    while let Some(ch) = iter.peek() {
-        debug!("match_str(): Checking {}", ch);
-        if let Some(ch_match) = iter_match.next() {
-            if *ch != ch_match {
-                return false;
-            }
-        } else {
-            debug!("Found string");
+    let _span0 = tracing::span!(tracing::Level::INFO, "match_char", "{}", ch).entered();
+
+    if let Some(peek_ch) = iter.peek() {
+        debug!("ch: {}", ch);
+        if *peek_ch == ch {
+            iter.next();
+            debug!("Found");
             return true;
         }
-        iter.next();
     }
-    if iter_match.next() == None {
-        true
-    } else {
-        false
-    }
+    return false;
 }
 
+/// # Examples
+///
+/// ```
+/// let mut input = vec!['d', 'd', 'o', '(', ')', '\n', 'd', 'o'].peekable();
+/// let words = vec![['d', 'o', '(', ')']];
+///
+/// assert!(1 == find_any(input, &words));
+/// assert!(None == find_any(input, &words));
+/// ```
 fn find_any(iter: &mut Peekable<impl Iterator<Item=char>>, words: &Vec<Vec<char>>) -> Option<usize> {
     let mut nr_matches = 0usize;
     let mut failed_words: Vec<bool> = Vec::new();
+
+    let _span0 = tracing::span!(tracing::Level::INFO, "find_any").entered();
 
     for _ in 0..words.len() {
         failed_words.push(false);
     }
 
-    debug!("find_any called");
     loop {
         if let Some(ch) = iter.peek() {
             debug!("ch: {}", ch);
@@ -96,19 +100,23 @@ fn find_any(iter: &mut Peekable<impl Iterator<Item=char>>, words: &Vec<Vec<char>
                     if *ch == words[idx][nr_matches] {
                         any_match = true;
                         if nr_matches == words[idx].len()-1 {
-                            debug!("find_any: Returning index {}", idx);
+                            debug!("{}", idx);
+                            iter.next();
                             return Some(idx);
                         }
                     } else {
-                        debug!("Not matching index {}", idx);
                         failed_words[idx] = true;
                     }
                 }
             }
-            nr_matches += 1;
             iter.next();
             if !any_match {
-                return Some(0);
+                nr_matches = 0;
+                for entry in &mut failed_words {
+                    *entry = false;
+                }
+            } else {
+                nr_matches += 1;
             }
         } else {
             return None;
@@ -117,6 +125,7 @@ fn find_any(iter: &mut Peekable<impl Iterator<Item=char>>, words: &Vec<Vec<char>
 }
 
 fn execute_next(iter: &mut Peekable<impl Iterator<Item=char>>, mul_enabled: &mut bool) -> Option<u32> {
+    let _span0 = tracing::span!(tracing::Level::INFO, "execute_next", mul_enabled).entered();
     if let Some(instruction) = find_any(iter, &vec![vec!['m', 'u', 'l', '('], vec!['d', 'o', '(', ')'], vec!['d', 'o', 'n', '\'', 't', '(', ')']]) {
         match instruction {
             0 => {
@@ -127,7 +136,7 @@ fn execute_next(iter: &mut Peekable<impl Iterator<Item=char>>, mul_enabled: &mut
                 } else {
                     return Some(0);
                 }
-                if !match_str(iter, ",") {
+                if !match_char(iter, ',') {
                     return Some(0);
                 }
                 if let Some(value) = get_int(iter) {
@@ -135,18 +144,28 @@ fn execute_next(iter: &mut Peekable<impl Iterator<Item=char>>, mul_enabled: &mut
                 } else {
                     return Some(0);
                 }
-                if !match_str(iter, ")") {
+                if !match_char(iter, ')') {
                     return Some(0);
                 }
                 if *mul_enabled {
+                    info!("mul({},{})", lhs, rhs);
                     return Some(lhs * rhs);
                 } else {
+                    info!("skipping mul({},{})", lhs, rhs);
                     return Some(0);
                 }
             },
-            1 => *mul_enabled = true,
-            2 => *mul_enabled = false,
-            _ => (),
+            1 => {
+                info!("do()");
+                *mul_enabled = true
+            },
+            2 => {
+                info!("don't()");
+                *mul_enabled = false
+            },
+            _ => {
+                ()
+            },
         }
         return Some(0);
     }
@@ -158,12 +177,9 @@ fn get_answer(file: &str) -> u32 {
     let mut sum: u32 = 0;
     let mut input = BufReader::new(File::open(file).unwrap())
         .lines()
-        .flat_map(|line| {
-            match line {
-                Ok(line_content) => line_content.chars().collect::<Vec<_>>(),
-                Err(_) => Vec::new(),
-            }
-        }).peekable();
+        .filter_map(Result::ok)
+        .flat_map(|line| line.chars().collect::<Vec<_>>())
+        .peekable();
     while let Some(value) = execute_next(&mut input, &mut mul_enabled) {
         sum += value;
     }
