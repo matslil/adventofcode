@@ -1,13 +1,10 @@
-// use flexi_logger;
-// use log::{info, warn};
-
 // 2577 too low
+// 2606 too high
 
 use tracing_subscriber::{filter, prelude::*};
 use std::{fs::File, sync::Arc};
 use tracing::{info, debug, warn};
 use std::io::{BufRead, BufReader};
-use std::cmp::min;
 
 fn setup_tracing() {
     let stdout_log = tracing_subscriber::fmt::layer()
@@ -78,124 +75,167 @@ fn get_answer(file: &str) -> usize {
     debug!("Dimension: {} x {}", input.len(), input[0].len());
     let mut all: Vec<Vec<char>> = Vec::new();
 
-    let mut current: Vec<char> = Vec::new();
+
+    let mut pos: Vec<Vec<(usize, usize)>> = Vec::new();
 
     // All rows
     for x in 0..input.len() {
         let _span = tracing::span!(tracing::Level::DEBUG, "Row", "{}", x).entered();
+        let mut current: Vec<char> = Vec::new();
+        let mut pos_add: Vec<(usize, usize)> = Vec::new();
         for y in 0..input[0].len() {
             current.push(input[x][y]);
+            pos_add.push((x, y));
         }
-        all.push(current.clone());
-        debug!("Forward:  {:?}", all[all.len()-1]);
+        pos.push(pos_add.clone().into_iter().rev().collect());
+        debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
+        pos.push(pos_add);
+        debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
         all.push(current.iter().copied().rev().collect());
-        debug!("Backward: {:?}", all[all.len()-1]);
-        current.clear();
+        all.push(current);
     }
 
     // All columns
     for y in 0..input[0].len() {
         let _span = tracing::span!(tracing::Level::DEBUG, "Column", "{}", y).entered();
+        let mut current: Vec<char> = Vec::new();
+        let mut pos_add: Vec<(usize, usize)> = Vec::new();
         for x in 0..input.len() {
             current.push(input[x][y]);
+            pos_add.push((x, y));
         }
-        all.push(current.clone());
-        debug!("Forward:  {:?}", all[all.len()-1]);
+        pos.push(pos_add.clone().into_iter().rev().collect());
+        debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
+        pos.push(pos_add);
+        debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
         all.push(current.iter().copied().rev().collect());
-        debug!("Backward: {:?}", all[all.len()-1]);
-        current.clear();
+        all.push(current);
     }
+
+    let xsize = input.len();
+    let ysize = input[0].len();
 
     // Diagonal 1
-    for start_x in 0..input.len() {
-        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 1 x", "{}", start_x).entered();
-        for index in 0..min(input.len(), input[0].len()) {
-            if start_x + index >= input.len() {
-                continue;
+    for start_x in 0..xsize {
+        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 1", "start_x: {}", start_x).entered();
+        let mut current: Vec<char> = Vec::new();
+        let mut pos_add: Vec<(usize, usize)> = Vec::new();
+        for y in 0..ysize {
+            let x = start_x + y;
+            if x >= xsize {
+                break;
             }
-            let x = start_x + index;
-            let y = index;
             debug!("({},{})", x, y);
             current.push(input[x][y]);
+            pos_add.push((x, y));
         }
         if current.len() >= 4 {
-            all.push(current.clone());
-            debug!("Forward:  {:?}", all[all.len()-1]);
+            pos.push(pos_add.clone().into_iter().rev().collect());
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
+            pos.push(pos_add);
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
             all.push(current.iter().copied().rev().collect());
-            debug!("Backward: {:?}", all[all.len()-1]);
+            all.push(current);
         }
-        current.clear();
     }
 
-    for start_y in 1..input[0].len() {
-        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 1 y", "{}", start_y).entered();
-        for index in 0..min(input.len(), input[0].len()) {
-            if start_y + index >= input[0].len() {
-                continue;
+    for start_y in 1..ysize {
+        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 1", "start_y: {}", start_y).entered();
+        let mut current: Vec<char> = Vec::new();
+        let mut pos_add: Vec<(usize, usize)> = Vec::new();
+        for x in 0..xsize {
+            let y = start_y + x;
+            if y >= xsize {
+                break;
             }
-            let x = index;
-            let y = start_y + index;
             debug!("({},{})", x, y);
             current.push(input[x][y]);
+            pos_add.push((x, y));
         }
         if current.len() >= 4 {
-            all.push(current.clone());
-            debug!("Forward:  {:?}", all[all.len()-1]);
+            pos.push(pos_add.clone().into_iter().rev().collect());
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
+            pos.push(pos_add);
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
             all.push(current.iter().copied().rev().collect());
-            debug!("Backward: {:?}", all[all.len()-1]);
+            all.push(current);
         }
-        current.clear();
     }
 
     // Diagonal 2
 
-    for start_x in 0..input.len() {
-        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2 x", "{}", start_x).entered();
-        for index in (0..min(input.len(), input[0].len())).rev() {
-            let x = start_x + (input.len() - index - 1);
-            if x >= input.len() {
+    for start_x in 0..xsize {
+        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2", "start_x: {}", start_x).entered();
+        let mut current: Vec<char> = Vec::new();
+        let mut pos_add: Vec<(usize, usize)> = Vec::new();
+        for y in (0..ysize).rev() {
+            let x = start_x + (xsize - y - 1);
+            if x >= xsize {
                 break;
             }
-            let y = index;
             debug!("({},{})", x, y);
             current.push(input[x][y]);
+            pos_add.push((x, y));
         }
         if current.len() >= 4 {
-            all.push(current.clone());
-            debug!("Forward:  {:?}", all[all.len()-1]);
+            pos.push(pos_add.clone().into_iter().rev().collect());
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
+            pos.push(pos_add);
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
             all.push(current.iter().copied().rev().collect());
-            debug!("Backward: {:?}", all[all.len()-1]);
+            all.push(current);
         }
-        current.clear();
     }
 
-    for start_y in 1..input[0].len() {
-        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2 y", "{}", start_y).entered();
-        for index in (0..min(input.len(), input[0].len())).rev() {
-            let x = index;
-            let y = start_y + (input[0].len() - index - 1);
-            if y >= input[0].len() {
+    for start_y in (0..ysize-1).rev() {
+        let _span = tracing::span!(tracing::Level::DEBUG, "Diagonal 2", "start_y: {}", start_y).entered();
+        let mut current: Vec<char> = Vec::new();
+        let mut pos_add: Vec<(usize, usize)> = Vec::new();
+        for x in 0..xsize {
+            if x > start_y {
+                debug!("Stopped");
                 break;
             }
+            let y = start_y - x;
             debug!("({},{})", x, y);
             current.push(input[x][y]);
+            pos_add.push((x, y));
         }
         if current.len() >= 4 {
-            all.push(current.clone());
-            debug!("Forward:  {:?}", all[all.len()-1]);
+            pos.push(pos_add.clone().into_iter().rev().collect());
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
+            pos.push(pos_add);
+            debug!("{}: {:?}", pos.len() - 1, pos[pos.len()-1]);
             all.push(current.iter().copied().rev().collect());
-            debug!("Backward: {:?}", all[all.len()-1]);
+            all.push(current);
         }
-        current.clear();
     }
 
     let mut matches = 0usize;
+
+    if all.len() != pos.len() {
+        debug!("What???");
+    }
+
+    for idx in 0..pos.len() {
+        debug!("{:?}", pos[idx]);
+        for cmp_idx in 0..pos.len() {
+            if idx == cmp_idx {
+                continue;
+            }
+            if pos[idx] == pos[cmp_idx] {
+                debug!("---- Duplicate detected: idx: {}, cmpk_idx: {}, {:?}", idx, cmp_idx, pos[idx]);
+            }
+        }
+    }
 
     for trial in all {
         let trial_matches = nr_matches(&trial);
         debug!("{:?}: {} matches", trial, trial_matches);
         matches += trial_matches;
     }
+
+//    assert!(matches > 2577 && matches < 2606);
 
     return matches;
 }
