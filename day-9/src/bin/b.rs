@@ -1,4 +1,5 @@
 // 9822763437802 too high
+// 9822107791798 too high
 
 use tracing_subscriber::{filter, prelude::*};
 use std::{fs, sync::Arc};
@@ -77,7 +78,7 @@ fn defrag(files: &mut Vec<File>) {
         let _span = tracing::span!(tracing::Level::INFO, "defrag", "{}", move_idx).entered();
         if let Some(first_free) = find_first_free(files, files[move_idx].size) {
             let _span1 = tracing::span!(tracing::Level::INFO, "", "-> {}", first_free).entered();
-            if move_idx < first_free {
+            if move_idx <= first_free {
 //                debug!("No left move!");
                 continue;
             }
@@ -107,7 +108,7 @@ fn checksum(files: &Vec<File>) -> usize {
         let _span = tracing::span!(tracing::Level::INFO, "checksum", "{:?}", file).entered();
         for pos in position..position+file.size {
             sum += file.id * pos;
-            debug!("Size {}: {} * {} = {}", file.size, pos, file.id, sum);
+//            debug!("Size {}: {} * {} = {}", file.size, pos, file.id, sum);
         }
         position += file.size + file.free;
     }
@@ -127,13 +128,11 @@ fn get_answer(file: &str) -> usize {
             .map(|ch| ch.to_string().parse::<usize>().unwrap())
         ).chunks(2).into_iter().enumerate() {
             let chunk_vec: Vec<usize> = chunk.1.into_iter().collect();
-            debug!("{:?}", chunk_vec);
             files.push(File{ id: chunk.0, size: chunk_vec[0], free: if chunk_vec.len() > 1usize {chunk_vec[1]} else { 0usize } });
         }
 
-    debug!("{}", print_fragmentation(&files));
     defrag(&mut files);
-    debug!("{:?}", files);
+    debug!("{}", print_fragmentation(&files));
     return checksum(&files);
 }
 
