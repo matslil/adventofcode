@@ -73,27 +73,37 @@ fn find_first_free(files: &Vec<File>, min_free: usize) -> Option<usize> {
     None
 }
 
+fn index_of_id(files: &Vec<File>, id: usize) -> usize {
+    for file in files.iter().enumerate() {
+        if file.1.id == id {
+            return file.0;
+        }
+    }
+    panic!("Help!");
+}
+
 fn defrag(files: &mut Vec<File>) {
-    for move_idx in (1..files.len()).rev() {
-        let _span = tracing::span!(tracing::Level::INFO, "defrag", "{}", move_idx).entered();
-        if let Some(first_free) = find_first_free(files, files[move_idx].size) {
-            let _span1 = tracing::span!(tracing::Level::INFO, "", "-> {}", first_free).entered();
-            if move_idx <= first_free {
+    for from_id in (1..files.len()).rev() {
+        let from_idx = index_of_id(files, from_id);
+        let _span = tracing::span!(tracing::Level::INFO, "defrag", "{}", from_idx).entered();
+        if let Some(to_idx) = find_first_free(files, files[from_idx].size) {
+            let _span1 = tracing::span!(tracing::Level::INFO, "", "-> {}", to_idx).entered();
+            if from_idx <= to_idx {
 //                debug!("No left move!");
                 continue;
             }
-            let size = files[move_idx].size;
-            let free = files[move_idx].free;
+            let size = files[from_idx].size;
+            let free = files[from_idx].free;
             let file = File {
-                id: files[move_idx].id,
+                id: files[from_idx].id,
                 size,
-                free: files[first_free].free - size
+                free: files[to_idx].free - size
             };
 //            debug!("{}", file);
-            files[move_idx-1].free += size + free;
-            files[first_free].free = 0;
-            files.remove(move_idx);
-            files.insert(first_free+1, file);
+            files[from_idx-1].free += size + free;
+            files[to_idx].free = 0;
+            files.remove(from_idx);
+            files.insert(to_idx+1, file);
         }
 //        debug!("{}", print_fragmentation(files));
     }
