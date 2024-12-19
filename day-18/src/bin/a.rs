@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader};
 use itertools::Itertools;
 use rust_tools::grid2d::Grid2D;
 use std::collections::VecDeque;
+use std::iter::zip;
 
 fn setup_tracing() {
     let stdout_log = tracing_subscriber::fmt::layer()
@@ -48,6 +49,15 @@ impl std::fmt::Display for MapItem {
     }
 }
 
+fn in_any(lists: &Vec<VecDeque<(usize, usize)>>, pos: &(usize, usize)) -> bool {
+    for list in lists {
+        if list.contains(pos) {
+            return true;
+        }
+    }
+    false
+}
+
 fn shortest_path(map: &Grid2D<MapItem>, goal: (usize, usize)) -> VecDeque<(usize,usize)> {
     let mut paths: Vec<VecDeque<(usize, usize)>> = vec![VecDeque::from(vec![(0,0)])];
 
@@ -70,11 +80,15 @@ fn shortest_path(map: &Grid2D<MapItem>, goal: (usize, usize)) -> VecDeque<(usize
         }
         let mut new_paths: Vec<VecDeque<(usize, usize)>> = Vec::new();
         let mut remove_paths: Vec<VecDeque<(usize, usize)>> = Vec::new();
-        for path in &mut paths {
-            let curr = *path.front().unwrap();
+        let mut nexts: Vec<Vec<(usize, usize)>> = Vec::new();
+        for path in &paths {
+            let curr = path.front().unwrap().clone();
             let next = map.successors_with(curr, |_, pos|
-                !path.contains(&pos) && map[pos] != MapItem::Corrupted && (pos.0 == curr.0 || pos.1 == curr.1)
+                !in_any(&paths, &pos) && map[pos] != MapItem::Corrupted && (pos.0 == curr.0 || pos.1 == curr.1)
                 );
+            nexts.push(next);
+        }
+        for (path, next) in zip(&mut paths, nexts) {
             for idx in 1..next.len() {
                 let mut new_path = path.clone();
                 new_path.push_front(next[idx]);
