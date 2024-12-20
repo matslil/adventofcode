@@ -68,6 +68,9 @@ fn pos_in_any_region(regions: &Vec<(char, Vec<(usize, usize)>)>, pos: (usize, us
 
 #[instrument]
 fn fence_length(map: &Grid2D<char>, region: &Vec<(usize, usize)>) -> usize {
+    let edges = region.iter().
+        map(|pos| map.successors_with(pos, |entry, p| !region.contains(&pos) && (curr.0 == pos.0 || curr.1 == pos.1)))
+        .collect();
     let mut len = 0usize;
 
     for curr in region {

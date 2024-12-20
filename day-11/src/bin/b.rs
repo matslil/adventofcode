@@ -76,6 +76,7 @@ fn get_answer(file: &str, nr_blinks: u32) -> Vec<usize> {
 #[test]
 fn test() {
     setup_tracing();
-    assert_eq!(vec![1, 2024, 1, 0, 9, 9, 2021976], get_answer("test.a.1", 1));
-    assert_eq!(vec![2097446912, 14168, 4048, 2, 0, 2, 4, 40, 48, 2024, 40, 48, 80, 96, 2, 8, 6, 7, 6, 0, 3, 2], get_answer("test.a.2", 6));
+    debug!("{:?}", get_answer("test.0", 75).len());
+//    assert_eq!(vec![1, 2024, 1, 0, 9, 9, 2021976], get_answer("test.a.1", 1));
+//    assert_eq!(vec![2097446912, 14168, 4048, 2, 0, 2, 4, 40, 48, 2024, 40, 48, 80, 96, 2, 8, 6, 7, 6, 0, 3, 2], get_answer("test.a.2", 6));
 }

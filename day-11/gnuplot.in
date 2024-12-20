@@ -1,0 +1,9 @@
+set title 'title'
+set ylabel 'y'
+set xlabel 'x'
+set grid
+set term png
+set logscale y 10
+set output 'infile.png'
+plot 'infile'
+
