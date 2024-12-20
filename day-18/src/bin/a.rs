@@ -49,70 +49,105 @@ impl std::fmt::Display for MapItem {
     }
 }
 
-fn in_any(lists: &Vec<VecDeque<(usize, usize)>>, pos: &(usize, usize)) -> bool {
-    for list in lists {
-        if list.contains(pos) {
-            return true;
-        }
-    }
-    false
-}
+// fn in_any(lists: &Vec<VecDeque<(usize, usize)>>, lists2: &Vec<VecDeque<(usize, usize)>>, pos: &(usize, usize)) -> bool {
+//     for list in lists {
+//         if list.contains(pos) {
+//             return true;
+//         }
+//     }
+//     for list in lists2 {
+//         if list.contains(pos) {
+//             return true;
+//         }
+//     }
+//     false
+// }
 
-fn shortest_path(map: &Grid2D<MapItem>, goal: (usize, usize)) -> VecDeque<(usize,usize)> {
-    let mut paths: Vec<VecDeque<(usize, usize)>> = vec![VecDeque::from(vec![(0,0)])];
+fn shortest_path2(map_arg: &Grid2D<MapItem>, goal: (usize, usize)) -> usize {
+    let mut map = map_arg.clone();
+    let mut queue: Vec<(usize, (usize, usize))> = vec![(0, (0, 0))];
 
     loop {
-        let mut shortest_path: VecDeque<(usize, usize)> = VecDeque::new();
-        let mut shortest: Option<usize> = None;
-        for path in &paths {
-            if let Some(pos) = path.front() {
-                if *pos == goal {
-                    debug!("Path reached goal, length: {}", path.len());
-                    if shortest.is_none() || shortest.unwrap() > path.len() {
-                        shortest = Some(path.len());
-                        shortest_path = path.clone();
-                    }
+        let mut queue_next: Vec<(usize, (usize, usize))> = Vec::new();
+
+        for (dist, pos) in &queue {
+            for successor in map.successors_with(*pos, |_, p|
+                map[p] != MapItem::Corrupted && map[p] != MapItem::Step && (p.0 == pos.0 || p.1 == pos.1)
+            ) {
+                if successor == goal {
+                    return dist+1;
                 }
+                map[successor] = MapItem::Step;
+                queue_next.push((dist+1, successor));
             }
         }
-        if shortest_path.len() > 0 {
-            return shortest_path;
+
+        if queue == queue_next {
+            panic!("No progress!");
         }
-        let mut new_paths: Vec<VecDeque<(usize, usize)>> = Vec::new();
-        let mut remove_paths: Vec<VecDeque<(usize, usize)>> = Vec::new();
-        let mut nexts: Vec<Vec<(usize, usize)>> = Vec::new();
-        for path in &paths {
-            let curr = path.front().unwrap().clone();
-            let next = map.successors_with(curr, |_, pos|
-                !in_any(&paths, &pos) && map[pos] != MapItem::Corrupted && (pos.0 == curr.0 || pos.1 == curr.1)
-                );
-            nexts.push(next);
-        }
-        for (path, next) in zip(&mut paths, nexts) {
-            for idx in 1..next.len() {
-                let mut new_path = path.clone();
-                new_path.push_front(next[idx]);
-                new_paths.push(new_path);
-            }
-            if next.len() > 0 {
-                path.push_front(next[0]);
-            } else {
-                remove_paths.push(path.clone());
-            }
-        }
-        for path in remove_paths {
-            for idx in 0..paths.len() {
-                if path == paths[idx] {
-                    paths.remove(idx);
-                    break;
-                }
-            }
-        }
-        if new_paths.len() > 0 {
-            paths.append(&mut new_paths);
-        }
+
+        queue = queue_next;
     }
 }
+
+// fn shortest_path(map: &Grid2D<MapItem>, goal: (usize, usize)) -> VecDeque<(usize,usize)> {
+//     let mut paths: Vec<VecDeque<(usize, usize)>> = vec![VecDeque::from(vec![(0,0)])];
+//     let mut remove_paths: Vec<VecDeque<(usize, usize)>> = Vec::new();
+//     let mut count = 0usize;
+// 
+//     loop {
+//         info!("Count: {}", count);
+//         count += 1;
+//         let mut shortest_path: VecDeque<(usize, usize)> = VecDeque::new();
+//         let mut shortest: Option<usize> = None;
+//         for path in &paths {
+//             if let Some(pos) = path.front() {
+//                 if *pos == goal {
+//                     debug!("Path reached goal, length: {}", path.len());
+//                     if shortest.is_none() || shortest.unwrap() > path.len() {
+//                         shortest = Some(path.len());
+//                         shortest_path = path.clone();
+//                     }
+//                 }
+//             }
+//         }
+//         if shortest_path.len() > 0 {
+//             return shortest_path;
+//         }
+//         let mut new_paths: Vec<VecDeque<(usize, usize)>> = Vec::new();
+//         let mut nexts: Vec<Vec<(usize, usize)>> = Vec::new();
+//         for path in &paths {
+//             let curr = path.front().unwrap().clone();
+//             let next = map.successors_with(curr, |_, pos|
+//                 !in_any(&paths, &remove_paths, &pos) && map[pos] != MapItem::Corrupted && (pos.0 == curr.0 || pos.1 == curr.1)
+//                 );
+//             nexts.push(next);
+//         }
+//         for (path, next) in zip(&mut paths, nexts) {
+//             for idx in 1..next.len() {
+//                 let mut new_path = path.clone();
+//                 new_path.push_front(next[idx]);
+//                 new_paths.push(new_path);
+//             }
+//             if next.len() > 0 {
+//                 path.push_front(next[0]);
+//             } else {
+//                 remove_paths.push(path.clone());
+//             }
+//         }
+//         for path in &remove_paths {
+//             for idx in 0..paths.len() {
+//                 if path == &paths[idx] {
+//                     paths.remove(idx);
+//                     break;
+//                 }
+//             }
+//         }
+//         if new_paths.len() > 0 {
+//             paths.append(&mut new_paths);
+//         }
+//     }
+// }
 
 
 fn get_answer(file: &str, size: (usize, usize), nr_rounds: usize) -> usize {
@@ -135,15 +170,16 @@ fn get_answer(file: &str, size: (usize, usize), nr_rounds: usize) -> usize {
 
     debug!("\n{}", map);
 
-    let path = shortest_path(&map, (size.0-1, size.1-1));
-
-    for step in &path {
-        map[*step] = MapItem::Step;
-    }
-
-    debug!("\n{}", map);
-
-    path.len() - 1
+    shortest_path2(&map, (size.0-1, size.1-1))
+//     let path = shortest_path(&map, (size.0-1, size.1-1));
+// 
+//     for step in &path {
+//         map[*step] = MapItem::Step;
+//     }
+// 
+//     debug!("\n{}", map);
+// 
+//     path.len() - 1
 }
 
 #[test]
